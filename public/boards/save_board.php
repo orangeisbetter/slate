@@ -15,7 +15,7 @@ $description = trim((string)($_POST['description'] ?? ''));
 if ($name === '') {
     go(base_url() . '/boards/?error=' . rawurlencode('A board needs a name'));
 }
-if (mb_strlen($name) > 80) {
+if (chars($name) > 80) {
     go(base_url() . '/boards/?error=' . rawurlencode('Board names are limited to 80 characters'));
 }
 

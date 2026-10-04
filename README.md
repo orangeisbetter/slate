@@ -9,7 +9,18 @@ due dates and a status history. Plain PHP and SQLite, no build step, no dependen
 - A web server that can run PHP (any of nginx, Apache, Caddy, or PHP's own built-in server for
   trying it out)
 
-There is nothing to install. No Composer, no npm, no vendored libraries.
+There is nothing to install. No Composer, no npm, no vendored libraries. Run `php bin/check.php` on
+any new machine, or after changing PHP version, to confirm all of that at once; it exits non-zero if
+something the app needs is missing, and it also reports the state of `data/board.db` and whether its
+migrations have been applied.
+
+`mbstring` is used when it is there and not required. Without it, search folds ASCII case only, so
+`GRÜN` will not match `grün`, and the length cap on a board name counts bytes, so accented names hit
+the limit sooner. That is the whole cost, and it used to be a blank page instead: the pickers called
+`mb_strtolower()` directly, so on a PHP without the extension every page carrying one stopped
+rendering halfway down, with the reason visible only in the error log. `lower()` and `chars()` in
+`src/lib.php` are the two helpers that avoid it, and `tests/flows.sh` refuses any direct `mb_` call
+outside them.
 
 Bootstrap and htmx are loaded from a CDN (`cdn.jsdelivr.net`, pinned to exact versions), so a client
 needs internet access to render the pages. For an air-gapped install, download those three files and
@@ -107,6 +118,7 @@ with a reference code rather than as half-rendered HTML. Anything the handler ca
 ## Tests
 
 ```sh
+php  bin/check.php     # is this PHP able to run the app at all
 bash tests/auth.sh     # sign-in, setup, invites, roles, authorization, CSRF
 bash tests/flows.sh    # projects, boards, drag and drop, htmx fragments
 php  tests/schema.php  # migrations, constraints, the schema ledger
@@ -114,7 +126,9 @@ php  tests/schema.php  # migrations, constraints, the schema ledger
 
 The two shell suites copy the app to a temp directory, migrate a throwaway database there, and drive
 it over HTTP — `auth.sh` on port 8125, `flows.sh` on 8127. They never touch `data/board.db`.
-`tests/seed.php` creates fixtures and is not meant for a real database.
+`tests/seed.php` creates fixtures and is not meant for a real database. `flows.sh` also starts a
+second server on the next port with `mb_strtolower` and `mb_strlen` disabled, because the extension
+being absent is a failure the suite cannot otherwise see from a machine that has it.
 
 ## How it is put together
 
@@ -172,7 +186,8 @@ dead at the top of its right column, with the whole suite green, because every a
 for content the page had already managed to emit. `tests/flows.sh` now walks the signed-in pages and
 fails unless each one ends in `</html>` and leaks no PHP diagnostic, and `tests/auth.sh` does the same
 for the sign-in page. If a page ever looks cut off, the SAPI error log has the message and a
-reference code; `SLATE_DEBUG=1` puts it on the page.
+reference code; `SLATE_DEBUG=1` puts it on the page, and `php bin/check.php` says whether the PHP
+itself is set up to run the app.
 
 ## Security posture
 

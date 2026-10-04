@@ -228,7 +228,7 @@ function board_picker_options(?string $q = null): array {
     foreach (boards() as $board) {
         $n = (int)$board['project_count'];
         $out[(int)$board['id']] = ['label' => $board['name'], 'sub' => "$n project" . ($n === 1 ? '' : 's'),
-                                   'search' => mb_strtolower($board['name'])];
+                                   'search' => lower($board['name'])];
     }
     return filter_options($out, $q);
 }
@@ -242,14 +242,14 @@ function user_picker_options(?string $q = null): array {
         $name = $USERS[$id] ?? 'Unknown';
         // An invited account has a name but no address yet, so trim rather than leave a gap.
         $out[$id] = ['label' => $name, 'sub' => $row['email'],
-                     'search' => mb_strtolower(trim("$name {$row['email']}"))];
+                     'search' => lower(trim("$name {$row['email']}"))];
     }
     return filter_options($out, $q);
 }
 
 /** Narrows picker options to those whose 'search' text contains $q. Null or '' means all of them. */
 function filter_options(array $options, ?string $q): array {
-    $q = mb_strtolower(trim((string)$q));
+    $q = lower(trim((string)$q));
     if ($q === '') {
         return $options;
     }

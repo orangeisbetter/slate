@@ -44,6 +44,33 @@ function q(string $sql, array $args = []): PDOStatement {
 function h($s): string {
     return htmlspecialchars((string)$s, ENT_QUOTES);
 }
+
+/**
+ * Lowercase, for the text the search boxes match against. mbstring when it is loaded, ASCII
+ * otherwise.
+ *
+ * Both of these exist because this app used to call mb_strtolower() and mb_strlen() directly, and a
+ * PHP without mbstring made that a fatal error on any page carrying a picker — the project page
+ * stopped dead halfway down, with no message, because src/errors.php cannot send an error page once
+ * output has started. A missing optional extension should cost a little Unicode folding, not the
+ * page. `php bin/check.php` reports whether it is there.
+ *
+ * What is lost without mbstring: ASCII-only case folding, so a search for "GRÜN" no longer matches
+ * "grün". Latin-1 case pairs are the ones that actually come up in practice.
+ */
+function lower(string $s): string {
+    return function_exists('mb_strtolower') ? mb_strtolower($s) : strtolower($s);
+}
+
+/**
+ * Characters, not bytes, for the length caps on names. Without mbstring this falls back to strlen,
+ * which counts bytes and so caps accented text earlier than plain ASCII — a stricter limit rather
+ * than a wrong one, and the only place in the app where it shows.
+ */
+function chars(string $s): int {
+    return function_exists('mb_strlen') ? mb_strlen($s) : strlen($s);
+}
+
 function dt(string $s): string {
     return gmdate('M j, Y H:i', strtotime($s)) . ' UTC';
 }

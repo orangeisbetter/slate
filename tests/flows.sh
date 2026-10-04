@@ -7,6 +7,9 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TMP="$(mktemp -d /tmp/slate-flows.XXXXXX)"
 PORT="${SLATE_TEST_PORT:-8127}"
+# A second server on a PHP without mbstring, for the check that needs one. Off by one so it cannot
+# collide with the first.
+NOPORT="${SLATE_TEST_PORT_NOEXT:-$((PORT+1))}"
 base="http://localhost:$PORT"
 jar="$TMP/jar"
 fails=0
@@ -538,6 +541,31 @@ done
 curl -sS "$base/project/?id=$live_id" -o "$TMP/rendered"
 for want in picker-people-modal picker-boards-modal 'Status history'; do
   has "the project page still has $want" "$TMP/rendered" "$want"
+done
+
+t "the app survives a PHP without mbstring"
+# The pickers used to call mb_strtolower() and mb_strlen() directly, and with the extension absent
+# those are undefined functions, so any page carrying a picker stopped dead halfway down its markup
+# with the message sitting only in the error log. Nothing about the machine running this suite is
+# under its control, so the only honest test is a PHP that really lacks them.
+check "the helpers still fold case" "abc" \
+  "$(php -d disable_functions=mb_strtolower,mb_strlen -r 'require "'"$ROOT"'/src/lib.php"; echo lower("ABC");')"
+check "  ...and count characters"  "3" \
+  "$(php -d disable_functions=mb_strtolower,mb_strlen -r 'require "'"$ROOT"'/src/lib.php"; echo chars("abc");')"
+# The guard above is only worth anything while nothing bypasses it. This is what reintroduced the
+# fatal: a new direct call, in some file that happens to be on the path of a page nobody re-checked.
+check "nothing calls mbstring directly" "0" \
+  "$(grep -rn 'mb_strtolower\|mb_strlen' "$ROOT/src" "$ROOT/public" 2>/dev/null | grep -vc "^$ROOT/src/lib.php:")"
+
+# A second server on that PHP. It shares the session save path, so the cookie from the first login is
+# good here and there is no reason to sign in twice.
+php -d disable_functions=mb_strtolower,mb_strlen -S "localhost:$NOPORT" -t "$TMP/public" >"$TMP/noext.log" 2>&1 &
+PIDS+=($!)
+for _ in $(seq 1 60); do curl -sS -o /dev/null "http://localhost:$NOPORT/login/" 2>/dev/null && break; sleep 0.1; done
+for page in "project/?id=$live_id" "new/" "boards/" "index.php"; do
+  curl -sS "http://localhost:$NOPORT/$page" -o "$TMP/rendered"
+  check "$page finishes without mbstring" "yes" "$(finished "$TMP/rendered")"
+  check "  ...leaks nothing"              "clean" "$(no_leak "$TMP/rendered")"
 done
 
 t "reject bad input"
