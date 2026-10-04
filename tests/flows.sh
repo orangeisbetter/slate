@@ -238,6 +238,31 @@ has "assigned work" "$TMP/dash" "Assigned to you"
 hasnt "no per-board cards" "$TMP/dash" "Open board"
 check "counts every project" "4" "$(sq 'select count(*) from projects')"
 
+t "a finished project leaves the dashboard"
+# Ada is on the epic and on nothing else, which makes it the one project here whose assignment can be
+# relied on — the project created above is back with users 2 and 4 by this point. Finishing the epic
+# therefore empties the list as well as filtering it, so one block covers both halves.
+epic_id=$(sq "select id from projects where title='Motor Interface'")
+epic_was=$(sq "select status from projects where id=$epic_id")
+epic_boards=$(sq "select count(*) from project_boards where project_id=$epic_id")
+has "it is listed to begin with"           "$TMP/dash" "Motor Interface"
+
+curl -sS -X PATCH "$base/project/update_status.php" -d "id=$epic_id" -d 'status=done' -o "$TMP/json"
+curl -sS "$base/" -o "$TMP/dash"
+hasnt "a finished project is not listed"   "$TMP/dash" "Motor Interface"
+has "and the empty state says so"          "$TMP/dash" "everything assigned to you is finished"
+curl -sS "$base/list/" -o "$TMP/list"
+has "the list view still has it"           "$TMP/list" "Motor Interface"
+check "and nothing was deleted" "1"        "$(sq "select count(*) from projects where status='done'")"
+check "and it is still on its boards" "$epic_boards" \
+  "$(sq "select count(*) from project_boards where project_id=$epic_id")"
+
+# Done is reversible, so it goes back: the board's own tests read this status.
+curl -sS -X PATCH "$base/project/update_status.php" -d "id=$epic_id" -d "status=$epic_was" -o "$TMP/json"
+curl -sS "$base/" -o "$TMP/dash"
+has "and reopening it puts it back"        "$TMP/dash" "Motor Interface"
+check "with the status it had" "in_progress" "$(sq "select status from projects where id=$epic_id")"
+
 t "put the project on a board"
 check "a project can start on no board" "0" "$(sq "select count(*) from project_boards where project_id=$new_id")"
 hasnt "and says so"                  "$TMP/dash" "Bench Power Supply"
@@ -536,6 +561,25 @@ for page in "index.php" "list/" "boards/" "users/" "new/" "board/?id=$gen" \
   check "$page finishes"  "yes"   "$(finished "$TMP/rendered")"
   check "  ...leaks nothing" "clean" "$(no_leak "$TMP/rendered")"
 done
+
+# The footer is on every one of those pages, because it hangs off page_end() and they all call it.
+# Checked per page rather than once, since a page that forgets to call page_end() would render fine
+# and be the one place without a footer.
+for page in "index.php" "list/" "boards/" "users/" "new/" "board/?id=$gen" \
+            "project/?id=$live_id" "search.php?q=bench" "project/?id=999999"; do
+  curl -sS "$base/$page" -o "$TMP/rendered"
+  has "$page has the footer" "$TMP/rendered" "a small project tracker"
+done
+# ...and it is written with utilities only, so there is no local class for it to fall out of step
+# with. (The one local rule the layout needs is on body, not on the footer.)
+hasnt "and no footer class of our own" "$ROOT/src/views.php" "page-footer"
+has "the footer collects the slack"     "$ROOT/src/views.php" 'footer class="border-top mt-auto"'
+has "and the body is the flex column"   "$ROOT/public/assets/style.css" "flex-direction: column;"
+# ...and one more, which is invisible to everything above. A flex column cancels the align-items:
+# stretch that mx-auto relies on, so every page silently shrank to fit its own content while the
+# markup all still looked right. Nothing here can see a width; this is here so the rule that undoes
+# it cannot be tidied away.
+has "and nothing shrinks to fit its content" "$ROOT/public/assets/style.css" "body > * { width: 100%; }"
 
 # The right column is the part that died, and it is built from data rather than markup, so it is the
 # part most able to fail: options, memberships and history all have to come back before anything is

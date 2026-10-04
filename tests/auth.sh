@@ -81,6 +81,7 @@ has "  ...asking for the first account" "Create the first account"
 hasnt "  ...with no identity badge yet" "Sign out"
 has "  ...centred in the window too" "page-center"
 hasnt "  ...and no navigation bar either" "navbar"
+hasnt "  ...and no footer either" "a small project tracker"
 
 echo "== first-run setup =="
 is "a short password is refused" "302" \

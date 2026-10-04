@@ -1,4 +1,20 @@
 /* Only what Bootstrap doesn't provide. */
+
+/* The document is a flex column at least as tall as the window, which is what lets the footer sit at
+   the bottom of it on a page holding three rows: the footer's mt-auto collects the leftover height
+   above itself rather than leaving it below. No page has to know — they all end in page_end() — and
+   there is still exactly one footer, so nothing can overlap it the way a position:sticky one would.
+   dvh is the current spelling of vh and keeps the footer reachable on a phone whose URL bar slides
+   away; the vh line stays for anything that has not heard of dvh. */
+body { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; }
+
+/* Every page centres its content with mx-auto, and that stops working the moment body is a flex
+   container: an auto margin on the cross axis takes the free space instead of align-items: stretch,
+   so each page quietly shrinks to fit whatever is in it. The dashboard went from 1200px to 590px
+   this way, with the whole suite still green because it only ever checks the markup. A width of
+   100% puts the size back, and max-width still does the capping. */
+body > * { width: 100%; }
+
 .page-wide { max-width: 1200px; }              /* project page width: raise it, or switch the wrapper to container-fluid for full width */
 
 /* Sign in and first-run setup, which have no navbar: the form stands in the middle of the window

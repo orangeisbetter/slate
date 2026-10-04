@@ -71,8 +71,11 @@ function search_menu(string $q): void {
 // shown: sign in and first-run setup. With no navigation to offer, a header is just something to
 // centre a form underneath, so those pages give the whole window to the form instead.
 function page_start(string $title, bool $nav = true): void {
-    global $USERS, $me;
+    global $USERS, $me, $SLATE_NAV;
     $me = $me ?? null;   // sign-in and setup pages render without a signed-in user
+    // page_end() is called by every page and knows nothing about this one, so whether the navbar is
+    // there gets recorded rather than asked about again at the other end.
+    $SLATE_NAV = $nav;
     ?>
     <!doctype html>
     <html lang="en">
@@ -163,7 +166,29 @@ function page_start(string $title, bool $nav = true): void {
     <?php
 }
 function page_end(): void {
+    global $SLATE_NAV;
     ?>
+    <?php if (!empty($SLATE_NAV)): ?>
+        <!-- Only where the navbar is. Those two pages hand the whole window to a form, and a footer
+             under a lone sign-in box would undo that. Written with utilities alone, like everything
+             else here: page-wide is the one local class, so the footer lines up with the content
+             above it without a rule of its own.
+
+             mt-auto rather than a margin of its own, because body is a flex column at least as tall
+             as the window and this collects the leftover height above itself. On a page too full to
+             have any, it collapses to nothing and the gap above the rule is the content's own bottom
+             padding, which every page already has. -->
+        <footer class="border-top mt-auto">
+            <div class="page-wide mx-auto px-3 px-md-4 py-3 d-flex flex-wrap align-items-center gap-3 small text-body-secondary">
+                <span class="fw-medium text-body">Slate</span>
+                <span>a small project tracker</span>
+                <!-- The whole of the privacy story, and it is short: nothing is collected or sent
+                     anywhere by the app, and the only outside party involved is the CDN the assets
+                     come from, which sees the request for them like any other. -->
+                <span class="ms-auto">No tracking. Assets load from a CDN.</span>
+            </div>
+        </footer>
+    <?php endif ?>
     </body>
     </html>
     <?php

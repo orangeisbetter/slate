@@ -11,10 +11,18 @@ foreach (q('SELECT status, COUNT(*) AS n FROM projects GROUP BY status') as $row
 $total = array_sum($counts);
 $open = $total - ($counts['done'] ?? 0) - ($counts['cancelled'] ?? 0);
 
+// Assigned to you, minus anything finished. A done project asks for nothing, and a list that keeps
+// showing them is a list that pushes the work still outstanding further down. 'cancelled' stays: it
+// was never going to happen, which is a different thing from being finished with.
 $mine = q('SELECT p.* FROM projects p
            JOIN project_assignees pa ON pa.project_id = p.id
-           WHERE pa.user_id = ?
-           ORDER BY p.status, p.due_date IS NULL, p.due_date, p.title', [$me])->fetchAll();
+           WHERE pa.user_id = ? AND p.status != ?
+           ORDER BY p.status, p.due_date IS NULL, p.due_date, p.title', [$me, 'done'])->fetchAll();
+// Only ever read as true or false. The exact count is on the Done tile above, and a sentence that has
+// to agree with the number is a sentence with a wrong number in it the first time it is wrong.
+$finished = (int)q('SELECT COUNT(*) FROM projects p
+                    JOIN project_assignees pa ON pa.project_id = p.id
+                    WHERE pa.user_id = ? AND p.status = ?', [$me, 'done'])->fetchColumn();
 
 page_start('Dashboard');
 ?>
@@ -41,7 +49,11 @@ page_start('Dashboard');
     <h2 class="h5 mb-3">Assigned to you</h2>
     <?php if (!$mine): ?>
         <p class="text-body-secondary">
-            Nothing is assigned to you yet. Admins can assign work from any project page.
+            <?php if ($finished): ?>
+                Nothing here needs you right now: everything assigned to you is finished.
+            <?php else: ?>
+                Nothing is assigned to you yet. Admins can assign work from any project page.
+            <?php endif ?>
         </p>
     <?php else: ?>
         <div class="table-responsive card">
