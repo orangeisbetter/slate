@@ -88,6 +88,10 @@ check "it was recorded as this user" "1" "$(sq "select creator_id from projects 
 t "new project page renders the saved values"
 curl -sS "$base/project/?id=$new_id" -o "$TMP/page"
 has "title"            "$TMP/page" "Flow Test"
+# The number is the id and it leads the title, so the span's content must be exactly #<id>: any
+# word put in front of it would land inside the span and fail this match.
+check "its number leads the title, and it is the id" "1" \
+  "$(tr '\n' ' ' < "$TMP/page" | grep -o '<h1 class="h3 mb-0">[^<]*<span class="ref">#'"$new_id"'</span>' | wc -l)"
 has "type badge"       "$TMP/page" "bg-danger-subtle text-danger-emphasis"
 has "start date"       "$TMP/page" 'value="2026-10-01"'
 has "due date"         "$TMP/page" 'value="2026-12-01"'
@@ -199,12 +203,14 @@ curl -sS -X POST "$base/project/project_boards.php" -d "id=$new_id" -d "boards[]
 check "membership saved" "1" "$(sq "select count(*) from project_boards where project_id=$new_id and board_id=$lab")"
 curl -sS "$base/board/?id=$lab" -o "$TMP/board"
 has "card on that board" "$TMP/board" "project/?id=$new_id"
+has "the card carries its number" "$TMP/board" '<span class="ref">#'"$new_id"'</span>'
 has "board column"       "$TMP/board" 'data-status="review"'
 has "board tagged for htmx" "$TMP/board" "data-board=\"$lab\""
 curl -sS "$base/board/?id=$gen" -o "$TMP/gen"
 hasnt "and not on the other board" "$TMP/gen" "project/?id=$new_id"
 curl -sS "$base/list/?board=$lab" -o "$TMP/list"
 has "list filtered by board" "$TMP/list" "Flow Test Renamed"
+has "the list names it by number too" "$TMP/list" '<span class="ref">#'"$new_id"'</span>'
 has "list shows the board"   "$TMP/list" "Lab Hardware"
 
 t "the board picker"
@@ -307,6 +313,8 @@ has "subproject counted on board" "$TMP/board" "0/1 subprojects done"
 t "a subproject is contained in a card naming its parent"
 has "wrapped and labelled" "$TMP/board" "Subproject of"
 has "  ...by the parent's title" "$TMP/board" "Flow Test Renamed"
+check "  ...and by the parent's number" "1" \
+  "$(tr '\n' ' ' < "$TMP/board" | grep -o 'Subproject of.\{0,120\}' | grep -c '<span class="ref">#'"$new_id"'</span>')"
 check "  ...linking to the parent" "1" \
   "$(tr '\n' ' ' < "$TMP/board" | grep -o 'Subproject of.\{0,120\}' | grep -c "project/?id=$new_id")"
 # The wrapper, border and all, is the drag handle; the card inside it must not be a second one.

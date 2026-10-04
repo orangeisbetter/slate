@@ -75,9 +75,9 @@ page_start('All projects');
                 <?php foreach ($all as $project): ?>
                     <tr>
                         <td>
-                            <a class="fw-medium text-decoration-none" href="project/?id=<?= $project['id'] ?>"><?= h($project['title']) ?></a>
-                            <?php if ($project['parent_id']): ?>
-                                <div class="small text-body-secondary">in <?= h($parent_titles[$project['parent_id']] ?? '') ?></div>
+<a class="fw-medium text-decoration-none" href="project/?id=<?= $project['id'] ?>"><?php ref_badge((int)$project['id']) ?><?= h($project['title']) ?></a>
+                              <?php if ($project['parent_id']): ?>
+                                  <div class="small text-body-secondary">in <?php ref_badge((int)$project['parent_id']) ?><?= h($parent_titles[$project['parent_id']] ?? '') ?></div>
                             <?php endif ?>
                         </td>
                         <td><?php type_badge($project['type']) ?></td>

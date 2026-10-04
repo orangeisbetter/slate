@@ -115,6 +115,17 @@ function type_badge(string $type): void {
     <?php
 }
 
+// The project's own number, shown wherever a project is named so one can be picked out of a
+// list or referred to out loud, then typed back into project/?id=. The number is the row id, so
+// nothing is allocated and nothing can drift: ?id=4 already is the identifier. There is no word
+// in front of it either, because a deployment on its own subdomain keeps its own ids and the
+// subdomain is what says which install a number belongs to.
+function ref_badge(int $id): void {
+    ?>
+    <span class="ref">#<?= $id ?></span>
+    <?php
+}
+
 // Board names for a set of board ids. Projects on no board are a normal state, so that
 // case is spelled out rather than left blank.
 function board_labels(array $board_ids): void {
@@ -190,7 +201,7 @@ function board_card(array $project, string $status, array $ctx, bool $top_level 
     <a class="card t-<?= h($project['type']) ?> text-body text-decoration-none <?= $top_level ? 'shadow-sm' : '' ?>"
        href="project/?id=<?= $id ?>"<?= $handle ?>>
         <div class="card-body p-2">
-            <div class="fw-medium"><?= h($project['title']) ?></div>
+            <div class="fw-medium"><?php ref_badge($id) ?><?= h($project['title']) ?></div>
             <div class="d-flex align-items-center gap-2 small text-body-secondary mt-1">
                 <?php type_badge($project['type']); ?>
                 <?php if ($project['due_date']): ?>
@@ -225,7 +236,7 @@ function board_card_wrapper(array $project, string $status, array $ctx): void {
     ?>
     <div class="card subproject shadow-sm" draggable="true" data-id="<?= $id ?>">
         <div class="card-header py-1 px-2 small fw-normal text-body-secondary">
-            Subproject of&nbsp;<a href="project/?id=<?= $parent_id ?>"><?= h($parent) ?></a>
+            Subproject of&nbsp;<a href="project/?id=<?= $parent_id ?>"><?php ref_badge($parent_id) ?><?= h($parent) ?></a>
         </div>
         <div class="card-body p-1">
             <?php board_card($project, $status, $ctx, false) ?>

@@ -35,13 +35,13 @@ page_start($p['title']);
 			<ol class="breadcrumb">
 				<li class="breadcrumb-item"><a href="index.php">Dashboard</a></li>
 				<?php foreach ($ancestors as $ancestor): ?>
-					<li class="breadcrumb-item"><a href="project/?id=<?= $ancestor['id'] ?>"><?= h($ancestor['title']) ?></a></li>
+					<li class="breadcrumb-item"><a href="project/?id=<?= $ancestor['id'] ?>"><?php ref_badge((int)$ancestor['id']) ?><?= h($ancestor['title']) ?></a></li>
 				<?php endforeach ?>
 				<li class="breadcrumb-item active"><?= h($p['title']) ?></li>
 			</ol>
 		</nav>
 		<div class="d-flex align-items-center gap-2 mb-2">
-			<h1 class="h3 mb-0"><?= h($p['title']) ?></h1>
+			<h1 class="h3 mb-0"><?php ref_badge($id) ?><?= h($p['title']) ?></h1>
 			<?php type_badge($p['type']) ?>
 		</div>
 		<div class="row mb-3">
@@ -70,6 +70,7 @@ page_start($p['title']);
 						<?php foreach ($subprojects as $sub): ?>
 							<a class="list-group-item list-group-item-action d-flex align-items-center gap-2" href="project/?id=<?= $sub['id'] ?>">
 								<?php type_badge($sub['type']) ?>
+								<?php ref_badge((int)$sub['id']) ?>
 								<?= h($sub['title']) ?>
 								<?php if ($sub['due_date']): ?>
 									<small class="text-body-secondary">due <?= h($sub['due_date']) ?></small>

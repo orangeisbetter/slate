@@ -132,6 +132,13 @@ URLs mirror the files: `public/project/index.php` is `/project/`, and its endpoi
 include `../src/bootstrap.php`, which is the single place that starts the session, loads shared code
 and applies the cross-origin check.
 
+A project is addressed by its row id, and that number is also shown next to its title wherever a
+project is named, as `#4`. So the thing you read on a card is the thing you type into
+`project/?id=4` — there is no second identifier to keep in step, and nothing to allocate. The number
+carries no product prefix on purpose: a deployment on its own subdomain keeps its own ids, so the
+subdomain is what says which install a number belongs to. `ref_badge()` in `src/views.php` is the
+only place that formats it.
+
 ## Security posture
 
 Worth knowing before you expose this to anyone:

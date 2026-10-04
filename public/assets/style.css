@@ -30,6 +30,10 @@ a.card:hover { background: var(--bs-tertiary-bg); }
 .t-epic { border-left: 4px solid var(--bs-primary); }
 .t-research { border-left: 4px solid var(--bs-info); }
 .av { width: 24px; height: 24px; font-size: .65rem; margin-left: -6px; border: 2px solid var(--bs-body-bg); }
+/* A project's number, inline before its title. Muted and monospaced so a column of them lines up
+   down a list without pulling attention from the titles they qualify. */
+.ref { font-family: var(--bs-font-monospace); font-size: .85em; font-weight: 400; color: var(--bs-secondary-color); margin-right: .35em; }
+.ref:hover { color: var(--bs-secondary-color); }
 /* A subproject sits inside this wrapper so its parent is named on the card. The wrapper is the
    drag handle for the whole group, so it shows a grab cursor and the card inside it does not. */
 .subproject { background: var(--bs-body-bg); border-style: solid; cursor: grab; }
