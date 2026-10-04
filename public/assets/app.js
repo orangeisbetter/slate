@@ -140,48 +140,25 @@ document.addEventListener('click', e => {
 // Every string lands via textContent, never innerHTML: the message can carry a request path, and a
 // path is whatever was typed into the URL.
 //
-// Three choices here go against what a toast normally does, all for the same reason — an error is not
-// transient information:
-//
-// - They do not go away on their own. One that clears itself in a few seconds is the same as no error
-//   at all by the time the person looks up from what they were doing, and the reference is only worth
-//   showing while it is still there to be written down.
-// - They stack. A second failure is new information; replacing the first loses whichever of the two
-//   nobody has read yet.
-// - They do not auto-hide, which for Bootstrap means autohide: false rather than leaving the default
-//   of a five second timer.
-//
-// The markup is Bootstrap's, from its own toast docs: a .toast-container top-0 end-0 p-3 holding
-// .toast elements, closed with the documented data-bs-dismiss="toast".
+// The markup and the component are Bootstrap's, from its toast documentation: a .toast-container
+// holding .toast elements, dismissed by the documented data-bs-dismiss="toast" button. The red is the
+// documented color-scheme treatment too, rather than a stylesheet of ours, so there is no toast CSS in
+// this project at all — if a rule is needed to make these look right, the class to reach for is
+// Bootstrap's.
 let slateToastBox = null;
-let slateClock = 0;
 
-// "just now", then in words. A bare clock time would mean nothing to somebody who glanced at the
-// toast an hour later, which is exactly what these are for.
-function slateAgo(at) {
-  const s = Math.max(0, Math.round((Date.now() - at) / 1000));
-  if (s < 5) return 'just now';
-  if (s < 60) return s + ' seconds ago';
-  const m = Math.round(s / 60);
-  if (m < 60) return m === 1 ? '1 minute ago' : m + ' minutes ago';
-  const h = Math.round(m / 60);
-  if (h < 24) return h === 1 ? '1 hour ago' : h + ' hours ago';
-  return Math.round(h / 24) + ' days ago';
-}
-
-// Built once and left empty until something needs saying. A live region has to be in the document
-// before anything is put into it to be announced at all, so it cannot be created at the moment of the
-// first failure and hoped over.
+// Built once, empty, on load rather than at the first failure. The docs are explicit that a live
+// region created at the same moment as its content is generally not announced at all, so the region has
+// to be in the document before anything is put in it.
 function slateToastContainer() {
   if (slateToastBox) return slateToastBox;
-  const live = document.createElement('div');
-  live.className = 'position-relative';
-  live.setAttribute('aria-live', 'polite');
-  live.setAttribute('aria-atomic', 'true');
   const box = document.createElement('div');
-  box.className = 'toast-container top-0 end-0 p-3 slate-toasts';
-  live.append(box);
-  document.body.append(live);
+  // position-fixed rather than the docs' position-relative wrapper: same placement classes, but a
+  // notification corner that scrolls away with the page stops being an interruption.
+  box.className = 'toast-container position-fixed top-0 end-0 p-3';
+  box.setAttribute('aria-live', 'polite');
+  box.setAttribute('aria-atomic', 'true');
+  document.body.append(box);
   slateToastBox = box;
   return box;
 }
@@ -191,33 +168,34 @@ function slateToast(detail, headline) {
   let ref = null;
   try { ref = xhr && xhr.getResponseHeader('X-Slate-Error'); } catch (e) { ref = null; }
 
+  // The docs' basic form: a header and a body. The colour goes on the header rather than on the toast,
+  // which is the whole reason for having one — text-bg-danger carries an !important, so on the toast it
+  // would flood the body too, and .toast-header paints its own near-opaque background over whatever is
+  // behind it. Putting the utility on the header alone is what leaves the body on Bootstrap's default.
   const el = document.createElement('div');
-  el.className = 'toast slate-error';
+  el.className = 'toast';
   el.setAttribute('role', 'alert');
   el.setAttribute('aria-live', 'assertive');
   el.setAttribute('aria-atomic', 'true');
 
-  const when = document.createElement('small');
-  when.className = 'text-body-secondary slate-when';
-  when.dataset.at = Date.now();
-  when.textContent = slateAgo(Number(when.dataset.at));
-
-  const close = document.createElement('button');
-  close.type = 'button';
-  close.className = 'btn-close';
-  close.dataset.bsDismiss = 'toast';
-  close.setAttribute('aria-label', 'Close');
-
+  // One generic headline, because the header is the part that is red and a stack of differently-worded
+  // red bars is harder to read at a glance than one that says the same thing every time. What went
+  // wrong goes in the body, where there is room to be specific.
   const title = document.createElement('strong');
   title.className = 'me-auto';
-  title.textContent = headline;
+  title.textContent = 'An error occurred';
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.className = 'btn-close btn-close-white';
+  close.dataset.bsDismiss = 'toast';
+  close.setAttribute('aria-label', 'Close');
   const header = document.createElement('div');
-  header.className = 'toast-header';
-  header.append(title, when, close);
+  header.className = 'toast-header text-bg-danger';
+  header.append(title, close);
 
   const body = document.createElement('div');
   body.className = 'toast-body';
-  body.append('Nothing was saved.');
+  body.append(headline);
   // No reference at all means the request never reached the server, or the server failed before it
   // could answer one, so there is nothing to quote and nothing to look up afterwards.
   if (ref) {
@@ -225,26 +203,21 @@ function slateToast(detail, headline) {
     const code = document.createElement('code');
     code.textContent = ref;
     body.append(code);
+  } else {
+    body.append(' Nothing was saved.');
   }
 
   el.append(header, body);
   slateToastContainer().append(el);
 
+  // autohide false, because the default is five seconds and an error that clears itself is gone before
+  // anybody has looked up from what they were doing. The docs note that turning autohide off makes the
+  // close button the only way out, which is the button above.
   const toast = new bootstrap.Toast(el, { autohide: false });
-  // Bootstrap fades a toast but leaves it sitting in the document, and these are meant to accumulate,
-  // so a dismissed one has to be taken out or the container fills up with invisible entries.
+  // Bootstrap leaves a hidden toast sitting in the document, and these stack, so a dismissed one is
+  // taken out rather than left holding a slot with nothing visible in it.
   el.addEventListener('hidden.bs.toast', () => el.remove());
   toast.show();
-
-  // The relative times are only true while nobody is looking at them. One timer, started alongside the
-  // first toast, keeps them honest without any of them having to expire to do it.
-  if (!slateClock) {
-    slateClock = setInterval(() => {
-      slateToastBox.querySelectorAll('.slate-when').forEach(t => {
-        t.textContent = slateAgo(Number(t.dataset.at));
-      });
-    }, 1000);
-  }
 }
 
 // Bubbled, because htmx dispatches these on the element that made the request and the pickers,

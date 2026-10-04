@@ -144,14 +144,28 @@ listens for `htmx:responseError`, `htmx:sendError` and `htmx:timeout` and shows 
 reference, so the failure is visible and traceable to the log. A 401 from an expired session gets the
 same treatment.
 
-The toasts are Bootstrap's, in a `.toast-container top-0 end-0 p-3` in the upper right, and they
-behave unlike a toast in three ways, all because an error is not transient information. They do not
-go away on their own — Bootstrap's default is a five second auto-hide, which is a failure nobody has
-read by the time they look up — so `autohide` is off and they wait to be dismissed. They stack, since
-a second failure is new information and replacing the first loses whichever went unread. And they are
-pinned rather than scrolling away, because an interruption that leaves with the scroll is litter. Each
-carries how long ago it happened, kept current by one timer, so a toast left up for an hour does not
-claim to be "just now".
+A failure is announced by a toast in the top right, and the markup and the behaviour are Bootstrap's,
+from its [toast documentation](https://getbootstrap.com/docs/5.3/components/toasts/): a
+`.toast-container position-fixed top-0 end-0 p-3` holding `.toast` elements, dismissed by the
+documented `data-bs-dismiss="toast"` button and driven by `bootstrap.Toast`. The red is the documented
+color-scheme treatment — `text-bg-danger` on the header, `btn-close-white` on its close button — so this
+project carries no toast CSS of its own.
+
+Each toast is split into the docs' two parts. A `.toast-header` bar reads "An error occurred", and that
+header is where the colour goes; a `.toast-body` carries the specific message and reference on
+Bootstrap's default background. The utility class belongs on the header rather than on the toast for a
+reason worth keeping: `text-bg-danger` is `!important`, so on the toast it would flood the body in red
+too, while `.toast-header` is the one part meant to be tinted. A single generic header also keeps a
+stack of red bars legible at a glance, since what actually went wrong is said in the body, where there
+is room to be specific.
+
+Two things are set against the default, both because an error is not transient information.
+`autohide: false`, because Bootstrap's default is five seconds and an error that clears itself is gone
+before anybody has looked up from what they were doing; the docs note that this makes the close button
+the only way out, which is why there is one. And they stack, since a second failure is new information
+and keeping only the newest loses whichever of the two nobody has read yet. The container is built
+empty on load rather than at the first failure, because the docs are explicit that a live region
+created at the same moment as its content is generally not announced at all.
 
 ## Tests
 

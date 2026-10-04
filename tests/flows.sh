@@ -640,14 +640,26 @@ check "a crash in an htmx request is a 500 too" "500" \
       -H 'HX-Request: true' -d "id=$live_id" -d 'add=2')"
 has "  ...with a reference for the toast" "$TMP/fh2" "X-Slate-Error"
 
-t "the error toasts stay where they are put"
+t "error toasts are a header and a body"
+# The header is the coloured part and says the same thing every time; the body carries what went wrong.
+# Keeping these as two elements is what lets the red stay on one and the message stay on the default.
+has "the colour goes on the header"   "$ROOT/public/assets/app.js" "header.className = 'toast-header text-bg-danger'"
+has "the header is generic"           "$ROOT/public/assets/app.js" "title.textContent = 'An error occurred'"
+has "and the body keeps the message"  "$ROOT/public/assets/app.js" "body.className = 'toast-body'"
+
+t "error toasts are not thrown away"
 # Two ways these stop being worth having, and neither shows up until somebody has already lost a
-# failure: one that clears itself, and one that replaces the last. An error toast that times out is
-# gone before anyone looks up, and a stack that keeps only the newest has thrown away whichever of two
-# failures went unread. Bootstrap's own default is a five second auto-hide, so staying put has to be
-# asked for explicitly rather than merely not being set.
-has "toasts do not auto-hide"       "$ROOT/public/assets/app.js" "autohide: false"
-hasnt "and never clear the others"  "$ROOT/public/assets/app.js" "querySelectorAll('.toast')"
+# failure: one that clears itself, and one that replaces the last. An error toast on a timer is gone
+# before anyone looks up, and a stack holding only the newest has thrown away whichever of two
+# failures went unread. The first version of this had both.
+#
+# Bootstrap's own default is autohide with a five second delay, so staying put has to be asked for
+# explicitly. The timer guard is deliberately blunt: app.js has no setTimeout at all, so any that
+# appears is a decision to make, and the only thing a timer in this file would ever be for is removing
+# a toast before it has been read.
+has   "toasts do not auto-hide"       "$ROOT/public/assets/app.js" "autohide: false"
+hasnt "and no timer takes one away"   "$ROOT/public/assets/app.js" "setTimeout"
+hasnt "and none clears the others"    "$ROOT/public/assets/app.js" "querySelectorAll('.toast')"
 
 t "reject bad input"
 check "blank title"     "Title is required"    "$(curl -sS -X POST "$base/new/add.php" -d 'title=')"
