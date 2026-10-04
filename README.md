@@ -144,6 +144,15 @@ listens for `htmx:responseError`, `htmx:sendError` and `htmx:timeout` and shows 
 reference, so the failure is visible and traceable to the log. A 401 from an expired session gets the
 same treatment.
 
+The toasts are Bootstrap's, in a `.toast-container top-0 end-0 p-3` in the upper right, and they
+behave unlike a toast in three ways, all because an error is not transient information. They do not
+go away on their own — Bootstrap's default is a five second auto-hide, which is a failure nobody has
+read by the time they look up — so `autohide` is off and they wait to be dismissed. They stack, since
+a second failure is new information and replacing the first loses whichever went unread. And they are
+pinned rather than scrolling away, because an interruption that leaves with the scroll is litter. Each
+carries how long ago it happened, kept current by one timer, so a toast left up for an hour does not
+claim to be "just now".
+
 ## Tests
 
 ```sh

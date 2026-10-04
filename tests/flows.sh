@@ -640,6 +640,15 @@ check "a crash in an htmx request is a 500 too" "500" \
       -H 'HX-Request: true' -d "id=$live_id" -d 'add=2')"
 has "  ...with a reference for the toast" "$TMP/fh2" "X-Slate-Error"
 
+t "the error toasts stay where they are put"
+# Two ways these stop being worth having, and neither shows up until somebody has already lost a
+# failure: one that clears itself, and one that replaces the last. An error toast that times out is
+# gone before anyone looks up, and a stack that keeps only the newest has thrown away whichever of two
+# failures went unread. Bootstrap's own default is a five second auto-hide, so staying put has to be
+# asked for explicitly rather than merely not being set.
+has "toasts do not auto-hide"       "$ROOT/public/assets/app.js" "autohide: false"
+hasnt "and never clear the others"  "$ROOT/public/assets/app.js" "querySelectorAll('.toast')"
+
 t "reject bad input"
 check "blank title"     "Title is required"    "$(curl -sS -X POST "$base/new/add.php" -d 'title=')"
 check "bad date"        "Dates must be YYYY-MM-DD" "$(curl -sS -X POST "$base/new/add.php" -d 'title=x' -d 'due_date=1-2-3')"
