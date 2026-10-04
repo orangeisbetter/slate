@@ -1,0 +1,9 @@
+# Runtime state. The SQLite database holds every account, password hash, session and project,
+# so it must never be committed. db/ holds the .sql migrations and is deliberately not ignored.
+/data/
+*.db
+*.db-wal
+*.db-shm
+*.bak
+*.sqlite
+*.sqlite3

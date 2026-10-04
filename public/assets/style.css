@@ -1,0 +1,42 @@
+/* Only what Bootstrap doesn't provide. */
+.page-wide { max-width: 1200px; }              /* project page width: raise it, or switch the wrapper to container-fluid for full width */
+
+/* Sign in and first-run setup, which have no navbar: the form stands in the middle of the window
+   instead. An auto margin on the child centres it across the cross axis and, unlike
+   align-items:center, collapses to nothing when the child is taller than the window, so the top of
+   a long form stays reachable instead of being pushed off-screen. */
+.page-center { min-height: 100vh; display: flex; justify-content: center; }
+.page-center > * { margin-block: auto; }
+/* The board lays out its own columns. Bootstrap's row-cols-* fixes the count at four to a row, which
+   strands the fifth status on a line of its own; auto-fit gives every column the same width, fits as
+   many as the window allows and wraps only when it has to. 14rem is about the narrowest a card stays
+   readable at. Columns keep the default stretch, so h-100 below still evens out their heights. */
+#board {
+    display: grid;
+    gap: 1rem;                                  /* the g-3 this replaces */
+    grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+}
+.board-col { min-height: 60vh; }
+.board-col > .card { margin-bottom: .5rem; }    /* keeps the cards in a column from touching */
+[data-status].over > .board-col { outline: 2px dashed var(--bs-primary); }
+a.card { cursor: grab; }
+a.card:hover { background: var(--bs-tertiary-bg); }
+.card.dragging { opacity: .5; }
+/* A card's edge carries its project type, not its column: the type is the thing worth spotting
+   across a board, and the column already says where the card is. Tones match TYPE_TONE. */
+.t-task { border-left: 4px solid var(--bs-secondary); }
+.t-bug { border-left: 4px solid var(--bs-danger); }
+.t-feature { border-left: 4px solid var(--bs-success); }
+.t-epic { border-left: 4px solid var(--bs-primary); }
+.t-research { border-left: 4px solid var(--bs-info); }
+.av { width: 24px; height: 24px; font-size: .65rem; margin-left: -6px; border: 2px solid var(--bs-body-bg); }
+/* A subproject sits inside this wrapper so its parent is named on the card. The wrapper is the
+   drag handle for the whole group, so it shows a grab cursor and the card inside it does not. */
+.subproject { background: var(--bs-body-bg); border-style: solid; cursor: grab; }
+.subproject > .card-header a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.subproject > .card-body > .card { margin-bottom: 0; cursor: pointer; }
+/* A picker's dialog: the list of things still on offer. Long enough to scroll rather than push
+   the dialog off the bottom, and the entries only look like buttons once pointed at. */
+.picker-list { max-height: 45vh; overflow-y: auto; }
+.picker-list [data-picker-option]:hover,
+.picker-list [data-picker-option]:focus-visible { background-color: var(--bs-secondary-bg-subtle); }
