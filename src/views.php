@@ -126,8 +126,17 @@ function ref_badge(int $id): void {
     <?php
 }
 
-// Board names for a set of board ids. Projects on no board are a normal state, so that
-// case is spelled out rather than left blank.
+// A reference to a person: the user list, anchored on their row. That list is open to any signed-in
+// user, so this needs no page of its own and no role check; when a real profile page replaces it,
+// the href here is the only thing that changes.
+function user_link(int $id, string $name): void {
+    ?>
+    <a class="link-quiet" href="users/#user-<?= $id ?>"><?= h($name) ?></a>
+    <?php
+}
+
+// Board names for a set of board ids, each linking to the board. Projects on no board are a normal
+// state, so that case is spelled out rather than left blank.
 function board_labels(array $board_ids): void {
     $names = array_column(boards(), 'name', 'id');
     if (!$board_ids) {
@@ -138,7 +147,7 @@ function board_labels(array $board_ids): void {
     }
     foreach ($board_ids as $id) {
         ?>
-        <span class="badge text-bg-light border text-body me-1"><?= h($names[$id] ?? 'Unknown') ?></span>
+        <a class="badge text-bg-light border text-body me-1" href="board/?id=<?= $id ?>"><?= h($names[$id] ?? 'Unknown') ?></a>
         <?php
     }
 }
@@ -325,12 +334,13 @@ function render_comments(int $project_id): void {
         return;
     }
 
-    foreach ($comments as $comment) {
-        ?>
-        <div class="border rounded bg-body-tertiary p-2 mb-2">
-            <div class="small text-body-secondary">
-                <?= h($USERS[$comment['author_id']] ?? 'Unknown') ?>, <?= dt($comment['created_at']) ?>
-            </div>
+foreach ($comments as $comment) {
+          $author = (int)$comment['author_id'];
+          ?>
+          <div class="border rounded bg-body-tertiary p-2 mb-2">
+              <div class="small text-body-secondary">
+                  <?php user_link($author, $USERS[$author] ?? 'Unknown') ?>, <?= dt($comment['created_at']) ?>
+              </div>
             <div><?= nl2br(h($comment['body'])) ?></div>
         </div>
         <?php

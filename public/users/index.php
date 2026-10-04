@@ -43,8 +43,8 @@ page_start('Users');
                     </tr>
                 </thead>
                 <tbody>
-                <?php foreach ($users as $u): ?>
-                    <tr>
+<?php foreach ($users as $u): ?>
+                      <tr id="user-<?= (int)$u['id'] ?>">
                         <td>
                             <?= h($u['name']) ?>
                             <?php if ((int)$u['id'] === $me): ?>

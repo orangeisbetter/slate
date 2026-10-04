@@ -139,6 +139,14 @@ carries no product prefix on purpose: a deployment on its own subdomain keeps it
 subdomain is what says which install a number belongs to. `ref_badge()` in `src/views.php` is the
 only place that formats it.
 
+A name or a board that appears on a page is a link to the thing it names. People link to their own
+row on the user list, `users/#user-3`, which any signed-in user can reach — so there is no separate
+profile page to build first, and when one arrives only the href in `user_link()` changes. Boards link
+to `board/?id=`. Two places are deliberately left as plain text: the picker dialogs, where clicking a
+row adds it rather than going anywhere, and the avatars on a board card, because the card is itself a
+link and an anchor inside an anchor does not work. `tests/flows.sh` fails if any page grows a nested
+anchor, and checks that every user reference still has a row to land on.
+
 ## Security posture
 
 Worth knowing before you expose this to anyone:

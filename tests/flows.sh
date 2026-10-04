@@ -31,6 +31,18 @@ column_of() { php -r '
   echo $m[1] ? end($m[1]) : "none";
 ' "$1" "$2"; }
 
+# The deepest an <a> sits inside another <a>. Above 1 is invalid HTML and makes the inner link
+# unclickable, which is the trap when a card is itself a link. Scans tags rather than using DOM,
+# which the PHP build here does not have.
+max_anchor_depth() { php -r '
+  preg_match_all("/<(\/?)a\b[^>]*>/i", file_get_contents($argv[1]), $m);
+  $d = 0; $max = 0;
+  foreach ($m[0] as $t) {
+      if ($t[1] === "/") { $d--; } else { $d++; if ($d > $max) { $max = $d; } }
+  }
+  echo $max;
+' "$1"; }
+
 PIDS=()
 cleanup() { for pid in "${PIDS[@]:-}"; do kill "$pid" 2>/dev/null; done; wait 2>/dev/null; rm -rf "$TMP"; }
 trap cleanup EXIT
@@ -182,7 +194,8 @@ curl -sS -X POST -H 'HX-Request: true' "$base/project/comment.php" -d "id=$new_i
   --data-urlencode 'body=Line one
 Line two & <b>x</b>' -o "$TMP/frag"
 has "comment rendered" "$TMP/frag" "Line two &amp; &lt;b&gt;x&lt;/b&gt;"
-has "author shown"     "$TMP/frag" "Ada Lovelace,"
+has "author shown"     "$TMP/frag" "Ada Lovelace</a>"
+  has "  ...and linked to their user" "$TMP/frag" 'class="link-quiet" href="users/#user-1"'
 has "newline kept"     "$TMP/frag" "<br />"
 hasnt "old empty state" "$TMP/frag" "No comments yet"
 check "authored by this user" "1" "$(sq "select author_id from comments where project_id=$new_id")"
@@ -299,6 +312,33 @@ t "PATCH status"
 curl -sS -X PATCH "$base/project/update_status.php" -d "id=$new_id" -d 'status=in_progress' -o "$TMP/json"
 check "echoes the payload" '{"id":"'"$new_id"'","status":"in_progress"}' "$(cat "$TMP/json")"
 check "and persisted it" "in_progress" "$(sq "select status from projects where id=$new_id")"
+
+t "references point at things that exist"
+# Runs while this project still exists, before the section below deletes it. Fetched fresh rather
+# than leaning on whatever the sections above last left in these files.
+curl -sS -b "$jar" "$base/users/"              -o "$TMP/users"
+curl -sS -b "$jar" "$base/project/?id=$new_id" -o "$TMP/page"
+curl -sS -b "$jar" "$base/list/?board=$lab"      -o "$TMP/list"
+curl -sS -b "$jar" "$base/board/?id=$lab"      -o "$TMP/board"
+curl -sS -b "$jar" "$base/index.php"           -o "$TMP/dash"
+has "the user list has a row to land on"  "$TMP/users" 'id="user-1"'
+has "an assignee links to their user"     "$TMP/page"  'class="link-quiet" href="users/#user-2"'
+has "the creator links to their user"     "$TMP/page"  'class="link-quiet" href="users/#user-1"'
+has "a board on the project links to it"  "$TMP/page"  'class="link-quiet" href="board/?id='"$lab"'"'
+has "the list's board badge links to it"  "$TMP/list"  '<a class="badge text-bg-light border text-body me-1" href="board/?id='"$lab"'"'
+has "the list's assignees link to users"  "$TMP/list"  'class="link-quiet" href="users/#user-2"'
+has "the dashboard's board badge links too" "$TMP/dash" 'href="board/?id='"$lab"'"'
+# Every user reference on every page must have a row to land on, so a renamed or deleted account
+# cannot leave a dangling anchor behind.
+check "every user link lands on a real row" "0" \
+  "$(grep -oh 'users/#user-[0-9]*' "$TMP/page" "$TMP/list" "$TMP/board" "$TMP/dash" | grep -o '[0-9]*$' | sort -u \
+     | while read -r uid; do grep -q "id=\"user-$uid\"" "$TMP/users" || echo "dangling $uid"; done | wc -l)"
+# A card is itself a link, so anything added inside one has to stay out of the markup.
+check "no anchor nested inside another" "1" "$(max_anchor_depth "$TMP/board")"
+check "  ...nor on the list"          "1" "$(max_anchor_depth "$TMP/list")"
+check "  ...nor on a project"         "1" "$(max_anchor_depth "$TMP/page")"
+check "  ...nor on the dashboard"     "1" "$(max_anchor_depth "$TMP/dash")"
+check "  ...nor on the user list"     "1" "$(max_anchor_depth "$TMP/users")"
 
 t "add a subproject, then delete the parent"
 loc=$(curl -sS -o /dev/null -w '%{redirect_url}' -X POST "$base/project/add.php" \

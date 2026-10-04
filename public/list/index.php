@@ -23,9 +23,9 @@ if ($filter > 0) {
     $all = q("SELECT * FROM projects ORDER BY {$sort}_at DESC, id DESC")->fetchAll();
 }
 
-$assignees = [];            // project id => names
+$assignees = [];            // project id => user ids, so each name can be linked to its user
 foreach (q('SELECT * FROM project_assignees') as $row) {
-    $assignees[$row['project_id']][] = $USERS[$row['user_id']] ?? '?';
+    $assignees[$row['project_id']][] = (int)$row['user_id'];
 }
 
 $parent_titles = array_column($all, 'title', 'id');
@@ -85,7 +85,11 @@ page_start('All projects');
                             <span class="badge text-bg-<?= TONE[$project['status']] ?>"><?= LABELS[$project['status']] ?></span>
                         </td>
                         <td class="small"><?php board_labels($boards_by_project[$project['id']] ?? []) ?></td>
-                        <td class="small"><?= h(implode(', ', $assignees[$project['id']] ?? [])) ?></td>
+                        <td class="small">
+                            <?php foreach ($assignees[$project['id']] ?? [] as $i => $au): ?>
+                                <?= $i ? ', ' : '' ?><?php user_link($au, $USERS[$au] ?? '?') ?>
+                            <?php endforeach ?>
+                        </td>
                         <td class="small"><?= h($project['due_date'] ?? '') ?></td>
                         <td class="small text-nowrap"><?= dt($project['updated_at']) ?></td>
                         <td class="small text-nowrap"><?= dt($project['created_at']) ?></td>

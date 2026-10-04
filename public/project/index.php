@@ -114,7 +114,7 @@ page_start($p['title']);
 				$board_options = board_picker_options();
 				?>
 				<div class="small text-body-secondary">Creator</div>
-				<div class="mb-3"><?= h($USERS[$p['creator_id']] ?? 'Unknown') ?></div>
+				<div class="mb-3"><?php user_link((int)$p['creator_id'], $USERS[$p['creator_id']] ?? 'Unknown') ?></div>
 
 				<div class="small text-body-secondary mb-1">Assignees</div>
 				<form id="people-form" class="mb-3">
@@ -122,8 +122,8 @@ page_start($p['title']);
 					<?php foreach ($assigned as $uid): $u = $people_options[$uid] ?? null; ?>
 						<div class="d-flex align-items-center gap-2 border rounded bg-body-tertiary px-2 py-1 mb-1" data-picker-row data-value="<?= $uid ?>">
 							<input type="hidden" name="as[]" value="<?= $uid ?>">
-							<span class="text-truncate"><?= h($u['label'] ?? 'Unknown') ?></span>
-							<?php if (!empty($u['sub'])): ?>
+<span class="text-truncate"><?php user_link($uid, $u['label'] ?? 'Unknown') ?></span>
+						<?php if (!empty($u['sub'])): ?>
 								<span class="small text-body-secondary text-truncate"><?= h($u['sub']) ?></span>
 							<?php endif ?>
 							<button type="button" class="btn-close ms-auto" aria-label="Remove <?= h($u['label'] ?? 'person') ?>"
@@ -179,8 +179,8 @@ page_start($p['title']);
 					<?php foreach ($board_ids as $bid): $b = $board_options[$bid] ?? null; ?>
 						<div class="d-flex align-items-center gap-2 border rounded bg-body-tertiary px-2 py-1 mb-1" data-picker-row data-value="<?= $bid ?>">
 							<input type="hidden" name="boards[]" value="<?= $bid ?>">
-							<span class="text-truncate"><?= h($b['label'] ?? 'Unknown') ?></span>
-							<?php if (!empty($b['sub'])): ?>
+<span class="text-truncate"><a class="link-quiet" href="board/?id=<?= $bid ?>"><?= h($b['label'] ?? 'Unknown') ?></a></span>
+						<?php if (!empty($b['sub'])): ?>
 								<span class="small text-body-secondary text-truncate"><?= h($b['sub']) ?></span>
 							<?php endif ?>
 							<button type="button" class="btn-close ms-auto" aria-label="Remove <?= h($b['label'] ?? 'board') ?>"
