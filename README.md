@@ -153,6 +153,17 @@ than navigating, and the extra line is what tells two similarly named things apa
 redraw the lists in place, so they follow the same rule; otherwise the detail would reappear the
 moment anyone edited the list.
 
+The header carries a project search to the left of the New project button, on every page. It asks the
+server as you type and swaps a menu of matches underneath, offering eight and then deferring to the
+rest, and it takes a project number as readily as a title: `4` and `#4` both find the same project,
+which is what makes the `#4` worth reading. The form is a real GET to `search.php`, so with JavaScript
+unavailable the same box submits and returns a page of every match, and `/search.php?q=fix` is a
+shareable list. Titles are the only thing matched. Two details are deliberate: the input sits outside
+the region htmx replaces, because replacing the box a person is typing into takes the caret with it and
+would leave the field accepting exactly one letter; and `%` and `_` are escaped, so a query of `%`
+looks for a percent sign rather than returning every project in the install. SQLite folds ASCII case
+but not the rest, so a title with an accented letter matches only on its exact case.
+
 ## Security posture
 
 Worth knowing before you expose this to anyone:
@@ -183,7 +194,11 @@ Deliberately not built yet, and worth deciding on before this grows:
 - **No email.** Invitations are a link an admin copies and sends by hand; there is no mail transport,
   no password reset, and no notification of any kind.
 - **No pagination.** The list view and the boards render every row. Fine for tens of projects,
-  not for thousands.
+  not for thousands. The header search caps its menu at eight and sends the rest to `search.php`,
+  which still lists every match.
+- **Search matches titles only.** Not descriptions, comments or assignee names, and not a fuzzy
+  match: `bnch` finds nothing. Widening it means deciding what a project is "found by", which is
+  a smaller change to `search_projects()` than it looks.
 - **No CSRF tokens**, by the design described above. The header check covers current browsers; a
   token in the form is the belt-and-braces option if you need one.
 - **Single-node assumptions.** SQLite in WAL mode on a local disk, one app instance. Do not point two

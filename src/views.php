@@ -7,6 +7,66 @@ const TONE = ['draft' => 'light', 'backlog' => 'info', 'todo' => 'secondary', 'i
               'cancelled' => 'dark'];
 const TYPE_TONE = ['task' => 'secondary', 'bug' => 'danger', 'feature' => 'success', 'epic' => 'primary', 'research' => 'info'];
 
+// How many matches the header menu offers before it defers to the results page. Enough to cover a
+// short title, few enough that the menu stays a shortcut rather than a second copy of the list view.
+const SEARCH_MENU_LIMIT = 8;
+
+/**
+ * The header's project search, and the menu of matches that appears under it.
+ *
+ * The input is deliberately outside the region htmx swaps: replacing an element a person is typing
+ * into takes the focus with it, so a box that refreshed its own results after every keystroke would
+ * accept exactly one letter. Only the menu comes back from the server.
+ *
+ * The form is a real GET to search.php, so with JS unavailable the same box submits and lands on a
+ * full page of matches. Nothing here depends on the menu existing.
+ */
+function search_box(string $q = ''): void {
+    ?>
+    <div class="search-wrap">
+        <form method="get" action="search.php" role="search">
+            <input type="search" name="q" value="<?= h($q) ?>" class="form-control" autocomplete="off"
+                   placeholder="Search projects" aria-label="Search projects"
+                   hx-get="search.php" hx-target="#search-menu" hx-swap="outerHTML"
+                   hx-trigger="input changed delay:250ms">
+        </form>
+        <?php search_menu($q); ?>
+    </div>
+    <?php
+}
+
+/**
+ * Just the menu, which is what search.php returns to htmx and what search_box embeds on a first
+ * paint. Visible or not is the server's call: an empty query renders the menu hidden rather than
+ * leaving an empty panel hanging under the navbar.
+ */
+function search_menu(string $q): void {
+    $q = trim($q);
+    $hits = search_projects($q, SEARCH_MENU_LIMIT);
+    ?>
+    <div id="search-menu" class="dropdown-menu search-menu<?= $q === '' ? ' d-none' : '' ?>">
+        <?php if ($q === ''): ?>
+        <?php elseif (!$hits): ?>
+            <div class="small text-body-secondary px-3 py-2">Nothing matches &ldquo;<?= h($q) ?>&rdquo;.</div>
+        <?php else: ?>
+            <?php foreach ($hits as $p): ?>
+                <a class="dropdown-item d-flex align-items-center gap-2" href="project/?id=<?= (int)$p['id'] ?>">
+                    <?php ref_badge((int)$p['id']) ?>
+                    <span class="text-truncate"><?= h($p['title']) ?></span>
+                    <?php type_badge($p['type']) ?>
+                </a>
+            <?php endforeach ?>
+            <?php if (count($hits) === SEARCH_MENU_LIMIT): ?>
+                <div class="dropdown-divider"></div>
+                <a class="dropdown-item small text-body-secondary" href="search.php?q=<?= h(rawurlencode($q)) ?>">
+                    See all matches
+                </a>
+            <?php endif ?>
+        <?php endif ?>
+    </div>
+    <?php
+}
+
 // $nav false leaves the navbar off entirely, for the two pages a signed-out visitor is only ever
 // shown: sign in and first-run setup. With no navigation to offer, a header is just something to
 // centre a form underneath, so those pages give the whole window to the form instead.
@@ -92,7 +152,8 @@ function page_start(string $title, bool $nav = true): void {
                                 </ul>
                             </li>
                         </ul>
-                        <a class="btn btn-primary" href="new/">New project</a>
+                          <?php search_box(); ?>
+                          <a class="btn btn-primary" href="new/">New project</a>
                     <?php else: ?>
                         <a class="btn btn-outline-primary ms-auto" href="login/">Sign in</a>
                     <?php endif ?>

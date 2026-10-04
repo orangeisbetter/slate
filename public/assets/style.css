@@ -53,3 +53,16 @@ a.badge.text-bg-light:hover { color: var(--bs-body-color); background-color: var
 .picker-list { max-height: 45vh; overflow-y: auto; }
 .picker-list [data-picker-option]:hover,
 .picker-list [data-picker-option]:focus-visible { background-color: var(--bs-secondary-bg-subtle); }
+/* The header's project search: a fixed-width box in the navbar with the menu of matches pinned
+   under it. absolute rather than a Bootstrap dropdown, so showing it needs no Bootstrap JS and can
+   be the server's decision. The input is never inside the menu, so it keeps focus while results
+   change underneath. */
+.search-wrap { position: relative; width: 15rem; margin-right: .5rem; }
+@media (max-width: 575.98px) { .search-wrap { width: 100%; order: -1; } }
+.search-menu {
+  position: absolute; top: calc(100% + .25rem); left: 0; right: 0; z-index: 1080;
+  max-height: 60vh; overflow-y: auto; display: block;
+}
+/* The menu is d-none when idle, and .dropdown-menu is display:none by default; display:block here
+   lets the d-none toggle win, which is the only thing that hides it. */
+.search-menu.d-none { display: none; }

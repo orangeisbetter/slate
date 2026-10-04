@@ -51,6 +51,23 @@ picker_rows() { php -r '
   echo implode("\n", array_map(fn($b) => trim(preg_replace("/\s+/", " ", $b)), $m[0])), "\n";
 ' "$1"; }
 
+# Which of the search box and its menu comes first in the markup. Only the input carries hx-swap, so
+# finding that attribute before the menu means the box sits outside the region htmx replaces, and
+# keeps its caret while results change. The other way round, the box would accept one letter.
+markup_order() { php -r '
+  $h = file_get_contents($argv[1]);
+  $i = strpos($h, "hx-swap=\"outerHTML\"");
+  $m = strpos($h, "<div id=\"search-menu\"");
+  echo ($i !== false && $m !== false && $i < $m) ? "input-first" : "menu-first";
+' "$1"; }
+
+# The project ids a search result links to, comma separated, so a whole match set is compared at
+# once rather than asserting that some expected id is somewhere in there.
+menu_ids() { php -r '
+  preg_match_all("/href=\"project\/\?id=(\d+)\"/", file_get_contents($argv[1]), $m);
+  echo implode(",", $m[1]);
+' "$1"; }
+
 PIDS=()
 cleanup() { for pid in "${PIDS[@]:-}"; do kill "$pid" 2>/dev/null; done; wait 2>/dev/null; rm -rf "$TMP"; }
 trap cleanup EXIT
@@ -373,6 +390,72 @@ curl -sS -H 'HX-Request: true' -b "$jar" -X POST "$base/project/project_boards.p
 picker_rows "$TMP/frag" > "$TMP/rows3"
 check "nor on a board redraw"              "0" "$(grep -c 'text-body-secondary' "$TMP/rows3")"
 has   "  ...and the board link survives"   "$TMP/rows3" 'href="board/?id='"$lab"'"'
+
+t "the header searches projects"
+# The box belongs to the navbar, not to one page: present everywhere, and left of New project as asked.
+curl -sS "$base/index.php" -o "$TMP/page"
+check "the box comes before the New project button" "input-first" "$(markup_order "$TMP/page")"
+has "it offers a search role"            "$TMP/page" 'role="search"'
+has "it asks the server as you type"     "$TMP/page" 'hx-get="search.php"'
+has "  ...swapping the menu"             "$TMP/page" 'hx-target="#search-menu"'
+has "  ...by replacing it, not filling"  "$TMP/page" 'hx-swap="outerHTML"'
+curl -sS "$base/list/" -o "$TMP/list"
+has "it is on the list page too"         "$TMP/list" 'search-wrap'
+
+# What the navbar would swap in, which is what htmx gets back.
+search_menu() { curl -sS -H 'HX-Request: true' --get --data-urlencode "q=$1" "$base/search.php"; }
+bench_id=$(sq "select id from projects where title='Bench Power Supply'")
+
+search_menu 'bench power' > "$TMP/menu"
+check "a whole title finds its project"  "$bench_id" "$(menu_ids "$TMP/menu")"
+check "  ...and the swap is only the menu" "0" "$(grep -c '<!DOCTYPE' "$TMP/menu")"
+search_menu 'bench' > "$TMP/menu"
+check "a fragment of it does too"        "$bench_id" "$(menu_ids "$TMP/menu")"
+search_menu 'BENCH' > "$TMP/menu"
+check "  ...whatever the case"            "$bench_id" "$(menu_ids "$TMP/menu")"
+search_menu '#'"$bench_id" > "$TMP/menu"
+check "the number beside a title works"  "$bench_id" "$(menu_ids "$TMP/menu")"
+search_menu "$bench_id" > "$TMP/menu"
+check "  ...with or without its hash"     "$bench_id" "$(menu_ids "$TMP/menu")"
+
+# Left unescaped these are wildcards, and a query of % would come back with the whole install.
+for wild in '%' '_'; do
+  search_menu "$wild" > "$TMP/menu"
+  has "a $(printf '%q' "$wild") searches for itself" "$TMP/menu" "Nothing matches"
+done
+search_menu 'nothing here matches this' > "$TMP/menu"
+has "a miss says so"                     "$TMP/menu" 'Nothing matches'
+search_menu '' > "$TMP/menu"
+has "an empty box shows no menu"         "$TMP/menu" 'search-menu d-none'
+check "  ...and lists nothing"           ""         "$(menu_ids "$TMP/menu")"
+
+# Without htmx the same form submits here, so the box still works rather than dying silently.
+curl -sS --get --data-urlencode 'q=bench power' "$base/search.php" -o "$TMP/page"
+has "without JS the box still finds it"  "$TMP/page" 'href="project/?id='"$bench_id"'"'
+has "  ...as a page of matches"           "$TMP/page" 'Matches for'
+curl -sS --get --data-urlencode 'q=nothing here matches this' "$base/search.php" -o "$TMP/page"
+has "  ...and admits a miss"              "$TMP/page" 'Nothing matches'
+curl -sS "$base/search.php" -o "$TMP/page"
+has "an empty query asks for a title"    "$TMP/page" 'Search projects'
+
+# Ten more, so the cap is the only thing separating a full page from the menu's handful. Without
+# these the two always agree, and a page that quietly dropped its LIMIT would still pass.
+php -r '
+  $d = new PDO("sqlite:" . $argv[1]);
+  $s = $d->prepare("INSERT INTO projects (title, type, status, created_at, updated_at)
+                    VALUES (?, \"task\", \"todo\", datetime(\"now\"), datetime(\"now\"))");
+  for ($i = 1; $i <= 10; $i++) { $s->execute(["Bulk Search $i"]); }
+' "$TMP/data/board.db"
+search_menu 'bulk search' > "$TMP/menu"
+check "the menu stops at its cap" "8" "$(menu_ids "$TMP/menu" | tr ',' '\n' | grep -c .)"
+has "  ...and offers the rest"   "$TMP/menu" 'See all matches'
+curl -sS --get --data-urlencode 'q=bulk search' "$base/search.php" -o "$TMP/page"
+check "the page lists every match" "10" "$(grep -c 'href="project/?id=' "$TMP/page")"
+has "  ...and says how many"      "$TMP/page" '10 matches'
+
+# Only reachable once signed in: SLATE_REQUIRE_LOGIN answers an anonymous request with a redirect
+# before search.php gets to look at the method, so the refusal is asserted here rather than there.
+check "search refuses a post" "405" "$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$base/search.php" -d 'q=x')"
 
 t "add a subproject, then delete the parent"
 loc=$(curl -sS -o /dev/null -w '%{redirect_url}' -X POST "$base/project/add.php" \

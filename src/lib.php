@@ -299,6 +299,41 @@ function board(int $id): ?array {
     return q('SELECT * FROM boards WHERE id=?', [$id])->fetch() ?: null;
 }
 
+/**
+ * Projects whose title matches $q, subprojects included, most recently updated first.
+ *
+ * $limit of 0 means every match, which is what the results page wants; the header box asks for a
+ * handful instead. It has to be a missing clause rather than LIMIT 0, which asks for no rows at all
+ * and would leave the page empty while the menu beside it worked. An empty query returns nothing
+ * either way, so a cleared box goes quiet instead of listing the whole install.
+ *
+ * A bare number, or one with a leading #, also finds that project by id, which is what makes the
+ * number beside a title worth reading: it can be typed straight back in. That is a second clause
+ * rather than a separate lookup, so a number still matches a title that happens to contain it.
+ *
+ * SQLite's LIKE folds ASCII case but not the rest, so a title with an accented letter matches only
+ * on its exact case.
+ *
+ * % and _ are escaped, so searching for them looks for them. Left alone they are wildcards, and a
+ * query of "%" would come back with every project in it.
+ */
+function search_projects(string $q, int $limit = 0): array {
+    $q = trim($q);
+    if ($q === '') {
+        return [];
+    }
+    $like = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $q) . '%';
+    $by_id = preg_match('/^#?(\d+)$/', $q) ? (int)ltrim($q, '#') : null;
+    $cap = $limit > 0 ? ' LIMIT ?' : '';
+    $args = $by_id === null ? [$like] : [$like, $by_id];
+    if ($cap !== '') {
+        $args[] = $limit;
+    }
+    return q("SELECT * FROM projects
+              WHERE title LIKE ? ESCAPE '\\'" . ($by_id === null ? '' : ' OR id = ?') . "
+              ORDER BY updated_at DESC, id DESC" . $cap, $args)->fetchAll();
+}
+
 /** Board ids for one project. Membership is independent per project, subprojects included. */
 function project_board_ids(int $project_id): array {
     return array_map('intval', q('SELECT board_id FROM project_boards WHERE project_id=? ORDER BY board_id',

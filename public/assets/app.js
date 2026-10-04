@@ -113,3 +113,15 @@ if (board) {
                                                      values: {id, status: col.dataset.status, board: board.dataset.board}});
   });
 }
+
+// ---- header project search ----
+// The menu under the search box is a plain positioned div, not a Bootstrap dropdown, so it inherits
+// none of their dismiss behaviour and needs its own: Escape, and a click anywhere else, both close
+// it. htmx re-shows it on the next keystroke, so hiding it here cannot strand it shut.
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') document.querySelectorAll('.search-wrap .search-menu').forEach(m => m.classList.add('d-none'));
+});
+document.addEventListener('click', e => {
+  if (e.target.closest('.search-wrap')) return;
+  document.querySelectorAll('.search-wrap .search-menu').forEach(m => m.classList.add('d-none'));
+});
