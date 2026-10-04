@@ -147,6 +147,12 @@ row adds it rather than going anywhere, and the avatars on a board card, because
 link and an anchor inside an anchor does not work. `tests/flows.sh` fails if any page grows a nested
 anchor, and checks that every user reference still has a row to land on.
 
+The assignee and board lists on a project page show a name and nothing else. The picker dialogs next
+to them still show the address and the project count, because clicking a row there adds it rather
+than navigating, and the extra line is what tells two similarly named things apart. The htmx endpoints
+redraw the lists in place, so they follow the same rule; otherwise the detail would reappear the
+moment anyone edited the list.
+
 ## Security posture
 
 Worth knowing before you expose this to anyone:

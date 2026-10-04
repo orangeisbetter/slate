@@ -78,10 +78,7 @@ $options = user_picker_options($q ?: null);
 <?php foreach ($chosen as $uid): $u = $all[$uid] ?? null; ?>
     <div class="d-flex align-items-center gap-2 border rounded bg-body-tertiary px-2 py-1 mb-1" data-picker-row data-value="<?= $uid ?>">
         <input type="hidden" name="as[]" value="<?= $uid ?>">
-        <span class="text-truncate"><?= h($u['label'] ?? 'Unknown') ?></span>
-        <?php if (!empty($u['sub'])): ?>
-            <span class="small text-body-secondary text-truncate"><?= h($u['sub']) ?></span>
-        <?php endif ?>
+        <span class="text-truncate"><?php user_link($uid, $u['label'] ?? 'Unknown') ?></span>
         <button type="button" class="btn-close ms-auto" aria-label="Remove <?= h($u['label'] ?? 'person') ?>"
                 hx-post="project/assign.php" hx-target="#people-form" hx-swap="innerHTML"
                 hx-include="closest form, #picker-people-search" hx-vals='{"remove":<?= $uid ?>}'></button>

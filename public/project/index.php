@@ -122,10 +122,7 @@ page_start($p['title']);
 					<?php foreach ($assigned as $uid): $u = $people_options[$uid] ?? null; ?>
 						<div class="d-flex align-items-center gap-2 border rounded bg-body-tertiary px-2 py-1 mb-1" data-picker-row data-value="<?= $uid ?>">
 							<input type="hidden" name="as[]" value="<?= $uid ?>">
-<span class="text-truncate"><?php user_link($uid, $u['label'] ?? 'Unknown') ?></span>
-						<?php if (!empty($u['sub'])): ?>
-								<span class="small text-body-secondary text-truncate"><?= h($u['sub']) ?></span>
-							<?php endif ?>
+						<span class="text-truncate"><?php user_link($uid, $u['label'] ?? 'Unknown') ?></span>
 							<button type="button" class="btn-close ms-auto" aria-label="Remove <?= h($u['label'] ?? 'person') ?>"
 									hx-post="project/assign.php" hx-target="#people-form" hx-swap="innerHTML"
 									hx-include="closest form, #picker-people-search" hx-vals='{"remove":<?= $uid ?>}'></button>
@@ -179,10 +176,7 @@ page_start($p['title']);
 					<?php foreach ($board_ids as $bid): $b = $board_options[$bid] ?? null; ?>
 						<div class="d-flex align-items-center gap-2 border rounded bg-body-tertiary px-2 py-1 mb-1" data-picker-row data-value="<?= $bid ?>">
 							<input type="hidden" name="boards[]" value="<?= $bid ?>">
-<span class="text-truncate"><a class="link-quiet" href="board/?id=<?= $bid ?>"><?= h($b['label'] ?? 'Unknown') ?></a></span>
-						<?php if (!empty($b['sub'])): ?>
-								<span class="small text-body-secondary text-truncate"><?= h($b['sub']) ?></span>
-							<?php endif ?>
+							<span class="text-truncate"><a class="link-quiet" href="board/?id=<?= $bid ?>"><?= h($b['label'] ?? 'Unknown') ?></a></span>
 							<button type="button" class="btn-close ms-auto" aria-label="Remove <?= h($b['label'] ?? 'board') ?>"
 									hx-post="project/project_boards.php" hx-target="#boards-form" hx-swap="innerHTML"
 									hx-include="closest form, #picker-boards-search" hx-vals='{"remove":<?= $bid ?>}'></button>

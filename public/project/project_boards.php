@@ -76,10 +76,7 @@ $options = board_picker_options($q ?: null);
 <?php foreach ($chosen as $bid): $b = $all[$bid] ?? null; ?>
     <div class="d-flex align-items-center gap-2 border rounded bg-body-tertiary px-2 py-1 mb-1" data-picker-row data-value="<?= $bid ?>">
         <input type="hidden" name="boards[]" value="<?= $bid ?>">
-        <span class="text-truncate"><?= h($b['label'] ?? 'Unknown') ?></span>
-        <?php if (!empty($b['sub'])): ?>
-            <span class="small text-body-secondary text-truncate"><?= h($b['sub']) ?></span>
-        <?php endif ?>
+        <span class="text-truncate"><a class="link-quiet" href="board/?id=<?= $bid ?>"><?= h($b['label'] ?? 'Unknown') ?></a></span>
         <button type="button" class="btn-close ms-auto" aria-label="Remove <?= h($b['label'] ?? 'board') ?>"
                 hx-post="project/project_boards.php" hx-target="#boards-form" hx-swap="innerHTML"
                 hx-include="closest form, #picker-boards-search" hx-vals='{"remove":<?= $bid ?>}'></button>

@@ -43,6 +43,14 @@ max_anchor_depth() { php -r '
   echo $max;
 ' "$1"; }
 
+# The current-member rows on a page — the assignee and board lists — one per line with whitespace
+# collapsed, so a row can be asserted on as a single string. The picker dialogs use different markup
+# and are deliberately not included.
+picker_rows() { php -r '
+  preg_match_all("/<div[^>]*data-picker-row.*?<\/div>/s", file_get_contents($argv[1]), $m);
+  echo implode("\n", array_map(fn($b) => trim(preg_replace("/\s+/", " ", $b)), $m[0])), "\n";
+' "$1"; }
+
 PIDS=()
 cleanup() { for pid in "${PIDS[@]:-}"; do kill "$pid" 2>/dev/null; done; wait 2>/dev/null; rm -rf "$TMP"; }
 trap cleanup EXIT
@@ -339,6 +347,32 @@ check "  ...nor on the list"          "1" "$(max_anchor_depth "$TMP/list")"
 check "  ...nor on a project"         "1" "$(max_anchor_depth "$TMP/page")"
 check "  ...nor on the dashboard"     "1" "$(max_anchor_depth "$TMP/dash")"
 check "  ...nor on the user list"     "1" "$(max_anchor_depth "$TMP/users")"
+
+t "the member lists on a project show names only"
+curl -sS -b "$jar" "$base/project/?id=$new_id" -o "$TMP/page"
+picker_rows "$TMP/page" > "$TMP/rows"
+check "rows were found"                  "3" "$(wc -l < "$TMP/rows")"
+check "no member row shows an address"   "0" "$(grep -c '@' "$TMP/rows")"
+check "no member row shows anything else" "0" "$(grep -c 'text-body-secondary' "$TMP/rows")"
+has   "an assignee row still names the person" "$TMP/rows" 'Grace Hopper'
+hasnt "  ...and not the creator, who is not assigned" "$TMP/rows" 'Ada Lovelace'
+has   "a board row still names the board"     "$TMP/rows" 'Lab Hardware'
+has   "  ...and the person is still linked"    "$TMP/rows" 'href="users/#user-'
+has   "  ...and the board is still linked"     "$TMP/rows" 'href="board/?id='"$lab"'"'
+# The picker dialogs are a different thing: clicking a row there adds it rather than navigating, and
+# the address is what tells two similarly named people apart. They keep the detail on purpose.
+has   "the picker dialog still offers addresses" "$TMP/page" 'ada@example.com'
+# The htmx endpoints redraw these same rows in place, so they have to agree with the page or the
+# detail would come back the moment anyone edited the list.
+curl -sS -H 'HX-Request: true' -b "$jar" -X POST "$base/project/assign.php" -d "id=$new_id" -d 'as[]=2' -o "$TMP/frag"
+picker_rows "$TMP/frag" > "$TMP/rows2"
+check "nor does the redraw after an edit"  "0" "$(grep -c '@' "$TMP/rows2")"
+check "  ...nor any other detail"          "0" "$(grep -c 'text-body-secondary' "$TMP/rows2")"
+has   "  ...and it keeps the link"         "$TMP/rows2" 'href="users/#user-'
+curl -sS -H 'HX-Request: true' -b "$jar" -X POST "$base/project/project_boards.php" -d "id=$new_id" -d "boards[]=$lab" -o "$TMP/frag"
+picker_rows "$TMP/frag" > "$TMP/rows3"
+check "nor on a board redraw"              "0" "$(grep -c 'text-body-secondary' "$TMP/rows3")"
+has   "  ...and the board link survives"   "$TMP/rows3" 'href="board/?id='"$lab"'"'
 
 t "add a subproject, then delete the parent"
 loc=$(curl -sS -o /dev/null -w '%{redirect_url}' -X POST "$base/project/add.php" \
