@@ -18,7 +18,13 @@ fail() { printf "  FAIL  %s\n     expected: %s\n     actual:   %s\n" "$1" "$2" "
 is()   { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1" "$2" "$3"; fi; }
 has()  { if grep -qF -- "$2" "$BODY"; then pass "$1"; else fail "$1" "body containing \"$2\"" "$(head -c 160 "$BODY" | tr '\n' ' ')"; fi; }
 hasnt(){ if grep -qF -- "$2" "$BODY"; then fail "$1" "body without \"$2\"" "$(head -c 160 "$BODY" | tr '\n' ' ')"; else pass "$1"; fi; }
-loc()  { grep -i '^location:' "$HDR" | tail -1 | tr -d '\r' | sed 's/^[Ll]ocation: *//'; }
+loc() { grep -i '^location:' "$HDR" | tail -1 | tr -d '\r' | sed 's/^[Ll]ocation: *//'; }
+
+# Did the last get/post render a whole document? A PHP fatal leaves well-formed markup behind and
+# every other assertion still passes on whatever was emitted before it gave up, so the closing tags
+# are the only real evidence. The sign-in and setup pages are checked here because they are the ones
+# nobody ever sees while signed in, and so the ones least likely to be looked at.
+finished() { is "$1 finishes" "yes" "$(tail -c 400 "$BODY" | grep -q '</html>' && echo yes || echo no)"; }
 
 get()  { curl -sS -o "$BODY" -D "$HDR" -w '%{http_code}' -c "$JAR" -b "$JAR" "$BASE$1"; }
 post() { curl -sS -o "$BODY" -D "$HDR" -w '%{http_code}' -c "$JAR" -b "$JAR" \
@@ -108,6 +114,7 @@ rm -f "$JAR"
 is "board redirects again" "302" "$(get /index.php)"
 is "  ...to sign in, remembering where" "/login/?next=%2Findex.php" "$(loc)"
 is "the sign-in page renders while signed out" "200" "$(get /login/)"
+finished "the sign-in page"
 has "  ...with the form" "Sign in"
 hasnt "  ...and no identity badge" "Sign out"
 has "  ...explaining how to get an account" "Ask an administrator"

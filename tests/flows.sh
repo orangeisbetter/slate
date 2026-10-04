@@ -509,6 +509,37 @@ check "subproject cascaded away" "404" "$(curl -sS -o /dev/null -w '%{http_code}
 curl -sS "$base/project/?id=$new_id" | grep -q "Project not found" && echo "ok   not found page" || { echo "FAIL not found page"; fails=$((fails+1)); }
 check "membership cascaded too" "0" "$(sq "select count(*) from project_boards where project_id=$new_id")"
 
+t "every page renders to the end"
+# A PHP fatal stops the script partway through a document and leaves perfectly well-formed markup
+# behind: every assertion above still finds whatever the page managed to emit before it gave up.
+# Observed for real, when a project page stopped dead at the top of its right column and shipped
+# with a suite full of green ticks, because nothing here asked whether the page had an ending.
+#
+# The closing tags are the only evidence, so ask for them. display_errors is off in most
+# deployments, which is why the log leak is checked too: with it on, the message lands mid-page and
+# the document can close perfectly while still being a bug.
+finished() { tail -c 400 "$1" | grep -q '</html>' && echo yes || echo no; }
+no_leak()   { grep -qiE 'fatal error|uncaught|<b>(warning|notice|deprecated)</b>' "$1" && echo leaked || echo clean; }
+
+# Signed-in pages only. login/ and setup/ redirect away from here and are rendered for a signed-out
+# visitor instead, which is auth.sh's business; walking them here would assert on an empty body.
+live_id=$(sq "select id from projects order by id limit 1")
+for page in "index.php" "list/" "boards/" "users/" "new/" "board/?id=$gen" \
+            "project/?id=$live_id" "search.php?q=bench" "project/?id=999999"; do
+  curl -sS "$base/$page" -o "$TMP/rendered"
+  check "$page finishes"  "yes"   "$(finished "$TMP/rendered")"
+  check "  ...leaks nothing" "clean" "$(no_leak "$TMP/rendered")"
+done
+
+# The right column is the part that died, and it is built from data rather than markup, so it is the
+# part most able to fail: options, memberships and history all have to come back before anything is
+# emitted there. live_id is read now, because an id deleted by an earlier section would render the
+# 404 page, which finishes perfectly and has no pickers in it at all.
+curl -sS "$base/project/?id=$live_id" -o "$TMP/rendered"
+for want in picker-people-modal picker-boards-modal 'Status history'; do
+  has "the project page still has $want" "$TMP/rendered" "$want"
+done
+
 t "reject bad input"
 check "blank title"     "Title is required"    "$(curl -sS -X POST "$base/new/add.php" -d 'title=')"
 check "bad date"        "Dates must be YYYY-MM-DD" "$(curl -sS -X POST "$base/new/add.php" -d 'title=x' -d 'due_date=1-2-3')"

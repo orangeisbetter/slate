@@ -164,6 +164,16 @@ would leave the field accepting exactly one letter; and `%` and `_` are escaped,
 looks for a percent sign rather than returning every project in the install. SQLite folds ASCII case
 but not the rest, so a title with an accented letter matches only on its exact case.
 
+A failure partway through a page is deliberately almost invisible: `src/errors.php` cannot send an
+error page once output has started, so it logs and returns, and the browser is left holding half a
+document with no message in it. That is the right trade for paths and SQL, but it means a truncated
+page looks like a layout bug rather than a crash, and it happened here — a project page once stopped
+dead at the top of its right column, with the whole suite green, because every assertion in it greps
+for content the page had already managed to emit. `tests/flows.sh` now walks the signed-in pages and
+fails unless each one ends in `</html>` and leaks no PHP diagnostic, and `tests/auth.sh` does the same
+for the sign-in page. If a page ever looks cut off, the SAPI error log has the message and a
+reference code; `SLATE_DEBUG=1` puts it on the page.
+
 ## Security posture
 
 Worth knowing before you expose this to anyone:
