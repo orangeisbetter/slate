@@ -125,3 +125,59 @@ document.addEventListener('click', e => {
   if (e.target.closest('.search-wrap')) return;
   document.querySelectorAll('.search-wrap .search-menu').forEach(m => m.classList.add('d-none'));
 });
+
+// ---- error toast ----
+// htmx does not swap a response that is not 2xx; it fires htmx:responseError and leaves the page
+// alone. That is the right default — a failed fragment must not replace good markup with half an
+// error page — but it leaves a failure completely invisible. Nothing moves and nothing is said, which
+// is how a server error in a background save reads as the app having ignored the click.
+//
+// These events are the only notice a request that went wrong will ever give, so they put one on
+// screen. The reference code is read from a response header rather than the body, because the body is
+// never swapped in and so cannot be read. It can only be in a header because the response is buffered
+// far enough for the server still to be able to set one when it fails.
+//
+// Every string lands via textContent, never innerHTML: the message can carry a request path, and a
+// path is whatever was typed into the URL.
+const TOAST_MS = 9000;
+
+function slateToast(detail, headline) {
+  const xhr = detail && detail.xhr;
+  let ref = null;
+  try { ref = xhr && xhr.getResponseHeader('X-Slate-Error'); } catch (e) { ref = null; }
+
+  const box = document.createElement('div');
+  box.className = 'slate-toast alert alert-danger';
+  box.setAttribute('role', 'alert');
+
+  const title = document.createElement('strong');
+  title.textContent = headline;
+  const body = document.createElement('span');
+  // No reference means the request never reached the server, or failed before it could answer.
+  body.textContent = ref ? ' Quote this reference: ' + ref : ' Nothing was saved.';
+
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.className = 'btn-close';
+  close.setAttribute('aria-label', 'Dismiss');
+  close.addEventListener('click', () => box.remove());
+
+  const text = document.createElement('div');
+  text.className = 'me-auto';
+  text.append(title, body);
+  box.append(text, close);
+
+  // One at a time. Two failures in a row are the same failure to the person clicking, and a column of
+  // identical red panels is its own way of saying nothing.
+  document.querySelectorAll('.slate-toast').forEach(t => t.remove());
+  document.body.append(box);
+  setTimeout(() => box.remove(), TOAST_MS);
+}
+
+// Bubbled, because htmx dispatches these on the element that made the request and the pickers,
+// buttons and board cards are all over the document. The names are taken from the pinned htmx build
+// rather than from memory: htmx has renamed events across major versions, and a listener on an event
+// that is never fired fails silently, which is the whole problem this section exists to fix.
+document.body.addEventListener('htmx:responseError', e => slateToast(e.detail, 'That did not save.'));
+document.body.addEventListener('htmx:sendError',   e => slateToast(e.detail, 'Could not reach the server.'));
+document.body.addEventListener('htmx:timeout',     e => slateToast(e.detail, 'The server took too long.'));

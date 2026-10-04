@@ -66,3 +66,14 @@ a.badge.text-bg-light:hover { color: var(--bs-body-color); background-color: var
 /* The menu is d-none when idle, and .dropdown-menu is display:none by default; display:block here
    lets the d-none toggle win, which is the only thing that hides it. */
 .search-menu.d-none { display: none; }
+/* The toast for a request that failed. htmx leaves the page alone on a non-2xx, so without this a
+   failed save looks exactly like the app ignoring the click. Fixed to the bottom right rather than
+   centred: it is an interruption, not the page's subject, and it must not cover the button the person
+   is about to press again. */
+.slate-toast {
+  position: fixed; right: 1rem; bottom: 1rem; z-index: 1090;
+  display: flex; align-items: flex-start; gap: .75rem;
+  max-width: min(28rem, calc(100vw - 2rem));
+  margin: 0; box-shadow: 0 .5rem 1.5rem rgba(0,0,0,.18);
+}
+.slate-toast code { font-size: .95em; }

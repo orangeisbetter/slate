@@ -10,6 +10,9 @@ PORT="${SLATE_TEST_PORT:-8127}"
 # A second server on a PHP without mbstring, for the check that needs one. Off by one so it cannot
 # collide with the first.
 NOPORT="${SLATE_TEST_PORT_NOEXT:-$((PORT+1))}"
+# A third server, on a copy of the app with a crash injected, for the checks that need one. Also off
+# by one so it cannot collide with the other two.
+FPORT="${SLATE_TEST_PORT_FAULT:-$((PORT+2))}"
 base="http://localhost:$PORT"
 jar="$TMP/jar"
 fails=0
@@ -567,6 +570,75 @@ for page in "project/?id=$live_id" "new/" "boards/" "index.php"; do
   check "$page finishes without mbstring" "yes" "$(finished "$TMP/rendered")"
   check "  ...leaks nothing"              "clean" "$(no_leak "$TMP/rendered")"
 done
+
+t "a crash is reported rather than shipped"
+# The reason this section exists. A fatal partway down a page used to leave a 200 and half a document
+# on the wire, because the status line goes out with the first flush of the body and a 200 cannot be
+# taken back afterwards. Which made the size of the page decide whether a crash was visible at all:
+# the same fault returned a clean 500 near the top and a silently truncated page further down.
+#
+# A crash is therefore checked for three things a person can act on: a real status code, a complete
+# page that says what happened instead of the half-built one, and a reference that ties what they saw
+# to a line in the log. Anything less and a failure is something you find out about from a customer.
+#
+# On a copy of the app, because the fault has to be a fatal one and the rest of the suite needs a
+# working server. Injecting it as late as the file allows is the point: by then the page has emitted
+# several KB, which is exactly the case that used to pass as a success.
+fault="$TMP/fault"
+mkdir -p "$fault"
+cp -r "$ROOT/src" "$ROOT/public" "$ROOT/db" "$fault/"
+cp -r "$TMP/data" "$fault/data"          # same database, so the same ids and the same login cookie
+# Two crashes in two places, because they fail differently. The page one goes in as late as the file
+# allows, so by the time it throws the buffer is holding several KB of markup — the case that used to
+# go out as a 200 with half a document on it. The fragment one goes in an htmx endpoint, which is
+# never rendered as a page at all.
+php -r '
+  $f = $argv[1];
+  $s = file_get_contents($f);
+  $i = strrpos($s, "page_end();");
+  if ($i === false) { fwrite(STDERR, "no page_end() in $f\n"); exit(1); }
+  // Emit something first, so the buffer is genuinely holding output when the throw happens.
+  file_put_contents($f, substr($s, 0, $i)
+    . "echo \"<p>injected marker</p>\"; throw new Error(\"injected fault\");\n"
+    . substr($s, $i));
+' "$fault/public/project/index.php"
+php -r '
+  $f = $argv[1];
+  $s = file_get_contents($f);
+  $needle = "require __DIR__ . \x27/../../src/bootstrap.php\x27;";
+  $i = strpos($s, $needle);
+  if ($i === false) { fwrite(STDERR, "no bootstrap require in $f\n"); exit(1); }
+  $i += strlen($needle);
+  file_put_contents($f, substr($s, 0, $i) . "\nthrow new Error(\"injected fragment fault\");" . substr($s, $i));
+' "$fault/public/project/assign.php"
+php -S "localhost:$FPORT" -t "$fault/public" >"$TMP/fault.log" 2>&1 &
+PIDS+=($!)
+for _ in $(seq 1 60); do curl -sS -o /dev/null "http://localhost:$FPORT/login/" 2>/dev/null && break; sleep 0.1; done
+
+fbase="http://localhost:$FPORT"
+check "a crash late in a page is a 500" "500" \
+  "$(curl -sS -D "$TMP/fh" -o "$TMP/fault.html" -w '%{http_code}' "$fbase/project/?id=$live_id")"
+has "  ...with a page that says what happened" "$TMP/fault.html" "Something went wrong"
+check "  ...that finishes"                     "yes"   "$(finished "$TMP/fault.html")"
+check "  ...leaking nothing"                   "clean" "$(no_leak "$TMP/fault.html")"
+hasnt "  ...and none of the half-built page"   "$TMP/fault.html" "injected marker"
+
+# The reference is the join between the page and the log. It has to be the same value in both, or one
+# of them is describing a different failure, which is worse than neither having it.
+ref=$(grep -i '^x-slate-error:' "$TMP/fh" | tr -d '\r' | awk '{print $2}')
+check "  ...carrying a reference" "yes" \
+  "$(printf '%s' "$ref" | grep -qE '^[0-9a-f]{8}$' && echo yes || echo no)"
+has "  ...shown on the page too" "$TMP/fault.html" "$ref"
+has "  ...and written to data/error.log" "$fault/data/error.log" "$ref"
+has "  ...naming the failure"              "$fault/data/error.log" "injected fault"
+has "  ...and to the SAPI log too"         "$TMP/fault.log"         "$ref"
+
+# The fragment case, which is the one a person notices: htmx will not swap a non-2xx, so this response
+# is never rendered and the header is the only thing that can carry the reference to the browser.
+check "a crash in an htmx request is a 500 too" "500" \
+  "$(curl -sS -D "$TMP/fh2" -o /dev/null -w '%{http_code}' -X POST "$fbase/project/assign.php" \
+      -H 'HX-Request: true' -d "id=$live_id" -d 'add=2')"
+has "  ...with a reference for the toast" "$TMP/fh2" "X-Slate-Error"
 
 t "reject bad input"
 check "blank title"     "Title is required"    "$(curl -sS -X POST "$base/new/add.php" -d 'title=')"

@@ -112,8 +112,37 @@ error_log = /var/log/php/slate.log
 ```
 
 The app turns warnings into exceptions on purpose, so a coding mistake shows up as a logged error
-with a reference code rather than as half-rendered HTML. Anything the handler catches is written to
-`error_log()`, which is where to look when a page comes back as "Something went wrong".
+with a reference code rather than as half-rendered HTML.
+
+Every failure lands in two places. The SAPI log is where a developer expects it — under `php -S` that
+is the terminal's stderr, and the `error_log` setting above moves it under Apache. And
+`data/error.log`, which the app writes itself, keeps one previous generation and stays under about a
+megabyte. The second exists because the SAPI log is somebody else's file on somebody else's schedule:
+it is rotated by a policy you do not control, it is cluttered with everything else the server logged,
+and on the built-in server it disappears with the terminal. `data/` is gitignored, so nothing in it is
+ever committed.
+
+Each entry carries the reference code shown to the user, so a report of "it said
+`a1b2c3d4`" leads straight to the exception, the file and line, and the request that caused it. It
+records request paths and messages, never addresses or passwords.
+
+### When something goes wrong
+
+The whole response is buffered. The status line goes out with the first flush of the body, so without
+a buffer a 200 is already on the wire before a page has finished rendering and cannot be taken back
+for a 500. That made the size of the page decide whether a crash was visible at all: identical code
+returned a clean 500 for a failure near the top of a page and a silently truncated 200 for the same
+failure further down. The cost is one page of memory per request.
+
+So a failure is a real HTTP 500 with a complete page, never the half-built one it interrupted, and it
+carries the reference in an `X-Slate-Error` header as well as on the page.
+
+htmx does not swap a response that is not 2xx — it fires `htmx:responseError` and leaves the page
+alone, which is the right default, since a failed fragment must not replace good markup with half an
+error page. The cost is that a failed save is otherwise completely silent. `public/assets/app.js`
+listens for `htmx:responseError`, `htmx:sendError` and `htmx:timeout` and shows a toast quoting the
+reference, so the failure is visible and traceable to the log. A 401 from an expired session gets the
+same treatment.
 
 ## Tests
 
@@ -178,16 +207,20 @@ would leave the field accepting exactly one letter; and `%` and `_` are escaped,
 looks for a percent sign rather than returning every project in the install. SQLite folds ASCII case
 but not the rest, so a title with an accented letter matches only on its exact case.
 
-A failure partway through a page is deliberately almost invisible: `src/errors.php` cannot send an
-error page once output has started, so it logs and returns, and the browser is left holding half a
-document with no message in it. That is the right trade for paths and SQL, but it means a truncated
-page looks like a layout bug rather than a crash, and it happened here — a project page once stopped
-dead at the top of its right column, with the whole suite green, because every assertion in it greps
-for content the page had already managed to emit. `tests/flows.sh` now walks the signed-in pages and
-fails unless each one ends in `</html>` and leaks no PHP diagnostic, and `tests/auth.sh` does the same
-for the sign-in page. If a page ever looks cut off, the SAPI error log has the message and a
-reference code; `SLATE_DEBUG=1` puts it on the page, and `php bin/check.php` says whether the PHP
-itself is set up to run the app.
+A failure partway through a page used to be almost invisible. `src/errors.php` could not send an error
+page once output had started, so it logged and returned, and the browser was left holding half a
+document with no message in it — a truncated page that reads as a layout bug rather than a crash. That
+is the right trade for paths and SQL, and it is what the rendering checks in the suite were written
+against: they walk the signed-in pages and fail unless each one ends in `</html>` and leaks no PHP
+diagnostic, and `tests/auth.sh` does the same for the sign-in page. A project page once stopped dead
+at the top of its right column with the whole suite green, because every assertion in it greps for
+content the page had already managed to emit; those checks exist because of it.
+
+Buffering, described above, is what removed the other half of the problem. A crash is now a 500 with a
+complete page rather than a 200 with half of one, `tests/flows.sh` asserts that directly against a copy
+of the app with a fault injected into it — late in a page, and in an htmx endpoint — and
+`data/error.log` records what happened. `SLATE_DEBUG=1` puts the detail on the page for development,
+and `php bin/check.php` says whether the PHP itself is set up to run the app.
 
 ## Security posture
 
