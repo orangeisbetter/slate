@@ -8,7 +8,7 @@ const LABELS = ['draft' => 'Draft', 'backlog' => 'Backlog', 'todo' => 'To do', '
 // per status it has a panel for, so this is the list of columns a board can possibly have. It is
 // deliberately not LABELS order: review_ready was appended to LABELS when it was added, but it sits
 // before review here, because that is the order the two actually happen in.
-const PANEL_ORDER = ['draft', 'backlog', 'todo', 'in_progress', 'blocked', 'review_ready', 'review',
+const PANEL_ORDER = ['draft', 'backlog', 'blocked', 'todo', 'in_progress', 'review_ready', 'review',
                      'done', 'cancelled'];
 // How a board treats each of its panels. 'required' draws the column even when it is empty,
 // 'optional' draws it only once something is in it, 'hidden' never draws it.

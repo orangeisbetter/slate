@@ -47,8 +47,12 @@ page_start($p['title']);
 		<div class="row mb-3">
 			<div class="col-auto">
 				<select class="form-select" name="status" hx-patch="project/update_status.php" hx-swap="none" hx-vals='{"id": <?= $id ?>}'>
-					<?php foreach (LABELS as $status => $label): ?>
-						<option value="<?= $status ?>"<?= $status === $p['status'] ? ' selected' : '' ?>><?= $label ?></option>
+					<?php // PANEL_ORDER, not LABELS: this is the order work moves through, and LABELS has
+					       // review_ready appended at the end, which put "Ready for review" below
+					       // "Cancelled" and split the two review stages apart. The same list the board
+					       // draws its columns from, so a status reads the same in both places. ?>
+					<?php foreach (PANEL_ORDER as $status): ?>
+						<option value="<?= $status ?>"<?= $status === $p['status'] ? ' selected' : '' ?>><?= LABELS[$status] ?></option>
 					<?php endforeach ?>
 				</select>
 			</div>
@@ -135,10 +139,10 @@ page_start($p['title']);
 				</form>
 
 				<div class="modal fade" id="picker-people-modal" tabindex="-1" aria-labelledby="picker-people-title" aria-hidden="true">
-					<div class="modal-dialog modal-dialog-centered">
+					<div class="modal-dialog">
 						<div class="modal-content">
-							<div class="modal-header py-2">
-								<h2 class="modal-title fs-5" id="picker-people-title">Add an assignee</h2>
+							<div class="modal-header">
+								<h5 class="modal-title" id="picker-people-title">Add an assignee</h5>
 								<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
 							</div>
 							<div class="modal-body">
@@ -189,10 +193,10 @@ page_start($p['title']);
 				</form>
 
 				<div class="modal fade" id="picker-boards-modal" tabindex="-1" aria-labelledby="picker-boards-title" aria-hidden="true">
-					<div class="modal-dialog modal-dialog-centered">
+					<div class="modal-dialog">
 						<div class="modal-content">
-							<div class="modal-header py-2">
-								<h2 class="modal-title fs-5" id="picker-boards-title">Add a board</h2>
+							<div class="modal-header">
+								<h5 class="modal-title" id="picker-boards-title">Add a board</h5>
 								<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
 							</div>
 							<div class="modal-body">

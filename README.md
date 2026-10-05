@@ -174,6 +174,7 @@ php  bin/check.php     # is this PHP able to run the app at all
 bash tests/auth.sh     # sign-in, setup, invites, roles, authorization, CSRF
 bash tests/flows.sh    # projects, boards, drag and drop, htmx fragments
 php  tests/schema.php  # migrations, constraints, the schema ledger
+node tests/drag.js     # the board's drag highlight, which is client-side
 ```
 
 The two shell suites copy the app to a temp directory, migrate a throwaway database there, and drive
@@ -181,6 +182,14 @@ it over HTTP — `auth.sh` on port 8125, `flows.sh` on 8127. They never touch `d
 `tests/seed.php` creates fixtures and is not meant for a real database. `flows.sh` also starts a
 second server on the next port with `mb_strtolower` and `mb_strlen` disabled, because the extension
 being absent is a failure the suite cannot otherwise see from a machine that has it.
+
+`flows.sh` runs `tests/drag.js` as well, and skips it with a line saying so if `node` is absent. It is
+the only suite that executes JavaScript: it loads the real `public/assets/app.js` into a DOM stub
+small enough to read — `closest`, `contains`, `classList`, bubbling listeners, a `dataTransfer` — and
+dispatches the drag events at it. The reason it exists is that a dashed outline left on a panel
+cannot be seen from server-rendered markup, and reading the source cannot tell you whether a
+highlight survives a drag that ended in the wrong place. A class toggled inside a listener either
+works or fails silently, so the only honest test is to run it.
 
 ## How it is put together
 
@@ -227,19 +236,113 @@ to lose work. Because the default is the absence of a row, only the panels that 
 stored in `board_panels`; storing all nine per board would mean nine rows per board, nearly all of them
 repeating the default, and every one of them a place for a row to disagree with it.
 
-The card on `/boards/` answers "what columns does this board have" with a row of badges, and the
-Panels button opens a dialog listing every status beside its own answer: a name, how many projects are
-in it, and a select. The select rather than three buttons because a segmented control does not fit the
-dialog's width, and the count beside the name already says what choosing Never would cost — a cost that
-also rides on the Never option itself, so it is there at the moment it is picked. That button is a link
-to `boards/panels.php`, which renders the same form as a page of its own when JavaScript is off — the
-setting does not depend on a dialog being openable. Panels are saved by their own endpoint rather than
-alongside the board's name, so renaming a board cannot quietly reset them. The setting is per board on
-purpose: review means something different on a board that is a review queue than on one that is not.
+The *order* of the columns is not stored anywhere. It is `PANEL_ORDER` in `src/lib.php`, one list
+everywhere — the board, the Panels dialog, the save endpoint, and the project's status dropdown — so a
+status reads the same wherever it is offered. It is deliberately not `LABELS` order: `review_ready` was
+appended to `LABELS` when it was added and sits at the end of it, but it belongs before `review`, since
+that is the order the two happen in. Building the dropdown from `LABELS` put "Ready for review" below
+"Cancelled" and split the two review stages apart; `flows.sh` reads the whole option sequence back and
+compares it to `PANEL_ORDER` for that reason. No board can rearrange its columns, on purpose: the order
+encodes how work flows, and letting each board change it would make "Done" mean something different on
+two boards. What an admin chooses is which panels exist and how each behaves, not where they sit.
 
-Every control on `/boards/`, `/board/` and the dialog is full size. The `-sm` variants were shipped to
+`/boards/` is a table — Board, Projects, and for an admin Actions — because a board has three facts
+about it and a row of them is a row of columns. The panels a board has are deliberately not summarised
+anywhere on it: the Panels dialog is where that question is answered, and a column of badges beside
+every row was a second, worse answer to the same question. That dialog lists every status beside its own
+answer — a name, how many projects are in it, and a select. The select rather than three buttons because
+a segmented control does not fit the dialog's width, and the count beside the name already says what
+choosing Never would cost, a cost that also rides on the Never option itself so it is there at the
+moment it is picked. That button carries two addresses, an `href` to `boards/panels.php` and an `hx-get`
+to `boards/panels-dialog.php` — see below. Panels are saved by their own endpoint rather than alongside a
+board's name, so renaming a board cannot quietly reset them. The setting is per board on purpose: review
+means something different on a board that is a review queue than on one that is not.
+
+`/boards/` displays and does not administer. It used to carry a rename form, a delete button and a
+new-board form per board, which made a page of boards a page of forms; all of that is now one dialog,
+reached from an Edit button per board and from New board in the heading. The page itself is a table of
+links: name, description, project count. Both dialogs are one shell each for the whole page rather than
+one per board. `edit.php` serves the create and edit forms from one script, distinguished only by
+whether an id is in the query, and posts to the `save_board.php` and `delete_board.php` that the inline
+forms used — there is no second implementation of saving a board to keep in step with the first. Delete
+sits on the same row as Save by pointing at a form of its own through the button's `form` attribute,
+since a form nested inside another is not valid HTML and a second form after it would put a destructive
+button on a row of its own. Dropping the badges
+also dropped the one query the page was making to count projects per status, which nothing on it needs.
+
+Every dialog in this app is Bootstrap's modal example and nothing else: a `.modal`, a `.modal-dialog`, a
+`.modal-content`, and inside that a `.modal-header` with the title and close button, a `.modal-body`, and
+a `.modal-footer` holding the buttons. No `.modal-dialog-centered`, no `py-2` on a header, no `fs-5` on a
+title, and no row of buttons hand-placed in a `d-flex` div where the footer is supposed to be. There is
+no modal CSS in this project at all; if a dialog does not look right, the class to reach for is
+Bootstrap's.
+
+A `.modal-footer` is a *sibling* of the `.modal-body`, not a part of it, which is why the dialogs on
+`/boards/` arrive whole rather than as a body alone: htmx swaps the outer HTML of a div inside the
+`.modal-dialog` for the whole `.modal-content`, header and footer included. Only the content inside the
+`.modal-dialog` is replaced — the dialog element itself stays, because Bootstrap holds a reference to it
+for the backdrop and the focus trap, and replacing it would leave both pointing at a node no longer in the
+document. The shell therefore holds no header of its own, which is the point: the server that draws the
+dialog also writes its title, because it knows which board was asked for, where the button that opened it
+only knew what to call the last thing it opened. That removed the `show.bs.modal` handler in `app.js` and
+the `data-dialog-title` and `data-board-name` attributes it read.
+
+The form is the body's and the footer sits beside it, so a footer button cannot be inside the form and
+says which form to submit through its `form` attribute instead — the same attribute Delete uses for its
+form of its own. The three picker dialogs (assignee, board, and the draft pickers on the project form)
+have no action buttons to move: their content *is* a list of choices, and a list of choices belongs in
+the body, so they are just the example's markup with nothing added to it.
+
+Every control on `/boards/`, `/board/` and both dialogs is full size. The `-sm` variants were shipped to
 match the rest of the app and were asked for twice before that was noticed, so `flows.sh` fails if a
-shrunk control reappears on either board page.
+shrunk control reappears on either board page or in either dialog.
+
+A board page carries no way to rename its own board. It used to carry an admin's Edit link, which was a
+second way into the same dialog as `/boards/` and reached by leaving the board you were looking at; it is
+gone, and boards are administered at `/boards/`, where the one dialog lives. The page is about the work
+on a board. The one thing it still links to `/boards/` for is a board whose panels are all hidden, where
+it points at that board's row so the admin can set some.
+
+That leaves the board form reached from one place rather than two, and it does not change the bargain
+this README already states: setting a board or a panel does not depend on a dialog being openable. That
+bargain is kept by having the form be a page as well as a fragment, and it is what the four scripts on
+`/boards/` are:
+
+| | fragment, for htmx | page, for the `href` |
+|---|---|---|
+| board form | `boards/edit-dialog.php` | `boards/edit.php` |
+| panel settings | `boards/panels-dialog.php` | `boards/panels.php` |
+
+Every button on `/boards/` carries both addresses at once — an `href` naming the page and an `hx-get`
+naming the fragment. htmx follows the `hx-get` and swaps; a browser without it follows the `href` and
+gets a page that works on its own. Keeping the fallback meant the endpoints could not simply be
+fragment-only, which would have left a bare `.modal-content` with no `<html>` around it, served with a
+200, at the end of a link that looks like it works.
+
+These are separate scripts rather than one branching on the `HX-Request` header, because each of them is
+then one thing: the fragment is Bootstrap's example with no conditionals threaded through it, and the page
+is a page. The branch had to be decided while each was halfway through drawing, which is what put
+`class="<?= $fragment ? 'modal-body' : '' ?>"` and a footer that was sometimes a `.modal-footer` and
+sometimes a hand-placed row into the middle of both.
+
+The suffix is `-dialog` rather than `-no-js` on purpose. A file named after the client that reaches it
+says who it is for; one named after what it returns says what it is, and stays true when a third
+representation turns up. So `-dialog.php` answers with a fragment and nothing else, and the unsuffixed
+name stays the page — which is also the stable, bookmarkable URL, and what a bare `curl` should sensibly
+get.
+
+Both pairs draw their fields from `board_form_fields()` and `board_panel_rows()` in `views.php`, because
+two copies of a form is two places for a field name, a `maxlength` or the cost of Never to drift apart,
+and the split would otherwise have introduced exactly the duplication the rest of this page avoids.
+`flows.sh` checks the fragment and the page agree, and `auth.sh` checks all four refuse a member — the
+fragments are separate ways in, so guarding only the pages would have let one read a board's settings.
+
+A board's description is a textarea, where it is a single line of text in an input. That puts the value
+where an attribute value never was — inside the element, as its text — so it is escaped as text by `h()`,
+which uses `ENT_QUOTES` and therefore escapes the quotes too. Escaping an attribute would not have been
+enough here: a `<` that reached the markup would close the tag. The tags are on one line for the same
+reason, since a newline straight after `<textarea>` becomes the first character of the value. A project's
+description is a textarea for the same reason and has been all along.
 
 The assignee and board lists on a project page show a name and nothing else. The picker dialogs next
 to them still show the address and the project count, because clicking a row there adds it rather

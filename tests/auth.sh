@@ -243,10 +243,18 @@ post /new/add.php 'title=Boardable project&description=&status=todo&type=task' >
 boardable="$(sq "select id from projects where title='Boardable project'")"
 get /boards/ >/dev/null
 has "a member sees the boards" "General"
-hasnt "  ...but not the new-board form" "Create board"
+hasnt "  ...but not a New board button" "New board"
 hasnt "  ...nor the panel settings" "panels[todo]"
-hasnt "  ...nor a way into them" "data-panel-open"
-is "  ...and the dialog is not there to be opened" "403" "$(get '/boards/panels.php?id=1')"
+hasnt "  ...nor a way into any dialog" "data-bs-toggle=\"modal\""
+hasnt "  ...and neither dialog is even on the page" "panels-modal"
+is "  ...and the panels dialog is not there to open" "403" "$(get '/boards/panels.php?id=1')"
+is "  ...nor the edit one" "403" "$(get '/boards/edit.php?id=1')"
+is "  ...nor the create one" "403" "$(get '/boards/edit.php')"
+# The same forms again as the fragments the buttons fetch, which are separate scripts and so separate
+# ways in. Guarding only the pages would leave a member able to read a whole board's panel settings.
+is "  ...nor the panels fragment" "403" "$(get '/boards/panels-dialog.php?id=1')"
+is "  ...nor the edit fragment" "403" "$(get '/boards/edit-dialog.php?id=1')"
+is "  ...nor the create fragment" "403" "$(get '/boards/edit-dialog.php')"
 is "a member cannot create a board" "403" "$(post /boards/save_board.php 'name=Sneaky&description=')"
 is "  ...and none was created" "0" "$(sq "select count(*) from boards where name='Sneaky'")"
 is "a member cannot delete a board" "403" "$(post /boards/delete_board.php 'id=1')"

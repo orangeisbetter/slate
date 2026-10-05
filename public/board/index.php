@@ -41,9 +41,6 @@ $all_hidden = !array_filter($modes, fn($mode) => $mode !== 'hidden');
         <div class="ms-auto d-flex align-items-center gap-2">
             <span class="text-body-secondary small"><?= count($on_board) ?> project<?= count($on_board) === 1 ? '' : 's' ?></span>
             <a class="btn btn-outline-secondary" href="new/?board=<?= $id ?>">New project here</a>
-            <?php if (is_admin($me)): ?>
-                <a class="btn btn-outline-secondary" href="boards/#board-<?= $id ?>">Edit</a>
-            <?php endif ?>
         </div>
     </div>
     <main id="board" data-board="<?= $id ?>">

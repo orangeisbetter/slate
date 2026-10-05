@@ -88,19 +88,6 @@ document.addEventListener('hidden.bs.modal', e => {
   if (search) search.value = '';
 }, true);
 
-// ---- panel dialog title ----
-// Every board's Panels button points at one dialog, so the shell cannot know which board it is
-// about to show. Bootstrap hands over the button that opened it as relatedTarget, and the name rides
-// along on that button, so the heading names a board rather than just saying "Panels" — which on a
-// page of several boards names nothing. Left alone, the body is whatever the last open put there.
-document.addEventListener('show.bs.modal', e => {
-  const opener = e.relatedTarget;
-  const title = e.target.querySelector && e.target.querySelector('.modal-title');
-  if (opener && opener.dataset && opener.dataset.boardName && title) {
-    title.textContent = 'Panels — ' + opener.dataset.boardName;
-  }
-});
-
 // ---- board drag and drop ----
 // Dropping a card posts the new status plus the board it came from, and htmx swaps the
 // re-rendered board back in. Only board/ renders this, and it tags <main id="board"> with
@@ -111,16 +98,55 @@ document.addEventListener('show.bs.modal', e => {
 const dragCard = target => target.closest('[data-id]');
 const board = document.getElementById('board');
 if (board) {
+  // Whether a card drag is really under way, as opposed to something else the browser decided was
+  // draggable. A text selection, a long press on a phone and a file dragged in from the desktop all
+  // fire dragover here as well, and the outline is the app saying "drop here", so it must not appear
+  // for any of them. It used to be driven by hover alone: a panel kept the outline whenever a drag
+  // ended without a card landing in it — a selection released over a panel, a drop in the gap between
+  // columns, Escape — because only dragleave ever took it off, and none of those fire one. A tap on
+  // a panel on a touch screen was enough to leave a dashed border on it.
+  let dragging = false;
+  const clearOver = () => board.querySelectorAll('[data-status]').forEach(c => c.classList.remove('over'));
+
   board.addEventListener('dragstart', e => {
     const c = dragCard(e.target);
-    if (c) { e.dataTransfer.setData('text/plain', c.dataset.id); c.classList.add('dragging'); }
+    if (!c) return; // not a card: leave dragging false, so dragover highlights nothing
+    e.dataTransfer.setData('text/plain', c.dataset.id);
+    c.classList.add('dragging');
+    dragging = true;
   });
-  board.addEventListener('dragend', () => document.querySelectorAll('.dragging').forEach(c => c.classList.remove('dragging')));
-  board.addEventListener('dragover', e => { const c = e.target.closest('[data-status]'); if (c) { e.preventDefault(); c.classList.add('over'); } });
-  board.addEventListener('dragleave', e => e.target.closest('[data-status]')?.classList.remove('over'));
+  // dragend is the one event that fires however the drag ends, including a drag cancelled with
+  // Escape and a drop that landed outside every column. Cleaning up here is what makes the outline
+  // a property of a drag in progress rather than something left on the page afterwards.
+  board.addEventListener('dragend', () => {
+    dragging = false;
+    document.querySelectorAll('.dragging').forEach(c => c.classList.remove('dragging'));
+    clearOver();
+  });
+  board.addEventListener('dragover', e => {
+    if (!dragging) return;
+    const c = e.target.closest('[data-status]');
+    if (!c) return;
+    // preventDefault is what makes the column a valid drop target, so it belongs to a drag that has
+    // something to deliver. Without this guard a file dragged in from the desktop was a valid drop
+    // target too, and releasing it navigated the tab away from the board.
+    e.preventDefault();
+    // One card, one destination: clear the others here rather than trusting dragleave to have run
+    // on the column being left, which is not guaranteed.
+    clearOver();
+    c.classList.add('over');
+  });
+  board.addEventListener('dragleave', e => {
+    const c = e.target.closest('[data-status]');
+    // Moving between two children of the same column fires this as well, and it used to take the
+    // outline with it, so the border blinked on and off as a card travelled down a panel. Leaving
+    // the column proper is the only thing that should clear it.
+    if (c && !c.contains(e.relatedTarget)) c.classList.remove('over');
+  });
   board.addEventListener('drop', e => {
     const col = e.target.closest('[data-status]'); if (!col) return;
     e.preventDefault();
+    clearOver();
     const id = e.dataTransfer.getData('text/plain');
     if (id) htmx.ajax('POST', 'board/move.php', {target: '#board', swap: 'innerHTML',
                                                      values: {id, status: col.dataset.status, board: board.dataset.board}});

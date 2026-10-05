@@ -65,6 +65,20 @@ max_anchor_depth() { php -r '
   echo $max;
 ' "$1"; }
 
+# The status options on a project page, in the order the markup lists them. Read as a whole sequence
+# rather than searched for one value, because the thing worth guarding here is the order itself: LABELS
+# has review_ready appended at the end, and a dropdown built from it put "Ready for review" below
+# "Cancelled" and split the two review stages apart. Given statuses, only those are returned, still in
+# the order the page lists them.
+status_options() { php -r '
+  $h = file_get_contents($argv[1]);
+  if (!preg_match("/<select[^>]*name=\"status\".*?<\/select>/s", $h, $s)) { echo "absent"; exit; }
+  preg_match_all("/<option value=\"([a-z_]+)\"/", $s[0], $m);
+  $want = array_slice($argv, 2);
+  echo implode(",", $want ? array_values(array_intersect($m[1], $want)) : $m[1]);
+  ' "$1" "${@:2}"; }
+
+
 # The current-member rows on a page — the assignee and board lists — one per line with whitespace
 # collapsed, so a row can be asserted on as a single string. The picker dialogs use different markup
 # and are deliberately not included.
@@ -172,6 +186,17 @@ has "new title"        "$TMP/page" "Flow Test Renamed"
 has "status logged"    "$TMP/page" "To do to In review"
 hasnt "old title gone" "$TMP/page" "Flow Test<"
 has "type changed"     "$TMP/page" "text-info-emphasis"
+check "the status list is the order work moves through" \
+  "$(php -r 'require "'"$ROOT"'/src/lib.php"; echo implode(",", PANEL_ORDER);')" \
+  "$(status_options "$TMP/page")"
+# Only the review stages and the states they end in, because that is the part that was wrong and the
+# part with a reason behind it. The rest of the sequence is a board-layout decision that belongs to
+# whoever is laying out the board — blocked ahead of to do, say — and a test that froze all nine would
+# fail on a considered change and be right to.
+check "  ...with both review stages before the states they end in" \
+  "review_ready,review,done,cancelled" \
+  "$(status_options "$TMP/page" review_ready review done cancelled)"
+has   "  ...and this project's own status is the selected one" "$TMP/page" '<option value="review" selected>'
 
 t "change assignees"
 loc=$(curl -sS -o /dev/null -w '%{redirect_url}' -X POST "$base/project/assign.php" -d "id=$new_id" -d 'as[]=2' -d 'as[]=4')
@@ -279,29 +304,134 @@ curl -sS "$base/" -o "$TMP/dash"
 has "and reopening it puts it back"        "$TMP/dash" "Motor Interface"
 check "with the status it had" "in_progress" "$(sq "select status from projects where id=$epic_id")"
 
-t "a board keeps its default panels until told otherwise"
+t "the boards page displays and does not administer"
 curl -sS "$base/boards/" -o "$TMP/boards"
-# The answer to "what columns does this board have" is on the card; changing one is in the dialog.
-# Nine controls per board on this page is what the dialog exists to avoid.
-has   "the columns are summarised"     "$TMP/boards" 'Columns'
-hasnt "  ...with a control for each"    "$TMP/boards" 'name="panels['
+# Every board used to carry its own edit form, and a new-board form sat under the lot. This page is a
+# list of links now; both jobs moved into one dialog, which is what these first checks are about.
+hasnt "no form for renaming a board"     "$TMP/boards" 'action="boards/save_board.php"'
+hasnt "  ...nor one for deleting it"      "$TMP/boards" 'action="boards/delete_board.php"'
+hasnt "  ...nor a board name field"       "$TMP/boards" 'name="name"'
+check "two dialogs, not one per board" "2" \
+  "$(grep -cE 'id="panels-modal"|id="board-modal"' "$TMP/boards")"
+check "  ...one of each kind"           "1" "$(grep -c 'id="panels-modal"' "$TMP/boards")"
+check "  ...the other"                  "1" "$(grep -c 'id="board-modal"' "$TMP/boards")"
+check "a Panels and an Edit per board"    "2" "$(grep -c 'data-bs-target="#panels-modal"' "$TMP/boards")"
+check "  ...Edit being the other one"      "2" "$(grep -c 'hx-get="boards/edit-dialog.php?id=' "$TMP/boards")"
+check "  ...and one New board"             "1" "$(grep -c 'href="boards/edit.php"' "$TMP/boards")"
+has   "  ...landing in the same dialog"    "$TMP/boards" 'data-bs-target="#board-modal"'
+has   "  ...each as a real link"          "$TMP/boards" 'href="boards/edit.php?id='"$lab"'"'
+has   "the board still links on"          "$TMP/boards" 'href="board/?id='"$lab"'"'
+# A table, not a list of cards, and the panels a board has are not summarised anywhere on this page:
+# that is the dialog's answer, and it was asked for twice before a column of badges came off.
+# Every button is a pair: href names the page its dialog is drawn from, hx-get names the fragment that
+# fills the dialog. htmx follows the second, a browser without it follows the first.
+check "every button has both addresses"   "5" "$(grep -c 'hx-get="boards/.*-dialog.php' "$TMP/boards")"
+check "  ...and as many pages to fall back to" "5" \
+  "$(grep -c 'href="boards/\(edit\|panels\)\.php' "$TMP/boards")"
+has   "a table of them"                   "$TMP/boards" '<table class="table align-middle'
+has   "  ...with a heading per column"     "$TMP/boards" '<th scope="col">Board</th>'
+has   "  ...and the counts in their own"   "$TMP/boards" '<th scope="col" class="text-end">Projects</th>'
+has   "  ...and the buttons in theirs"     "$TMP/boards" 'class="text-end">Actions</th>'
+hasnt "  ...and no list left"              "$TMP/boards" 'list-group-item'
+hasnt "  ...nor a panel control per row"   "$TMP/boards" 'name="panels['
+hasnt "  ...nor the columns summarised"    "$TMP/boards" '>Columns<'
+check "  ...one row per board"             "2" "$(grep -c '<tr id="board-' "$TMP/boards")"
+check "  ...and no panel query left in it" "0" "$(grep -c 'board_panels\|data-status' "$TMP/boards")"
 # Every control on a board page is asked to be full size, twice now, after being shipped small to
 # match the rest of the app. Named rather than matching "-sm", so a shadow-sm would not trip it.
-check "no shrunken controls on it"      "0" \
+check "no shrunken controls on it"         "0" \
   "$(grep -cE 'form-control-sm|form-select-sm|btn-sm' "$TMP/boards")"
-check "one dialog, not one per board"  "1" "$(grep -c 'id="panels-modal"' "$TMP/boards")"
-check "and a Panels button per board"  "2" "$(grep -c 'data-panel-open' "$TMP/boards")"
-has   "  ...that htmx loads over"      "$TMP/boards" 'hx-get="boards/panels.php?id='"$lab"'"'
-has   "  ...into that dialog"          "$TMP/boards" 'hx-target="#panels-body"'
-check "nothing is stored yet"          "0" "$(sq 'select count(*) from board_panels')"
+# The shell is only the modal and its dialog, because a fragment carrying just a body has nowhere to
+# put a .modal-footer: Bootstrap wants the buttons beside the body, not inside it. Both fragments
+# arrive whole, so the swap is the outer HTML of the div inside the dialog and not its contents.
+has   "Panels loads its dialog over"       "$TMP/boards" 'hx-get="boards/panels-dialog.php?id='"$lab"'"'
+has   "  ...into that dialog"              "$TMP/boards" 'hx-target="#panels-content"'
+has   "  ...replacing all of it"           "$TMP/boards" 'hx-swap="outerHTML"'
+has   "Edit loads its own over"            "$TMP/boards" 'hx-get="boards/edit-dialog.php?id='"$lab"'"'
+has   "  ...into the other one"            "$TMP/boards" 'hx-target="#board-content"'
+# The dialog itself is not swapped, only what is inside it: Bootstrap keeps a reference to the dialog
+# element for the backdrop and the focus trap, and replacing it would leave both pointing at a node
+# that is no longer in the document.
+check "the shell holds no dialog chrome"   "0" "$(grep -c 'modal-title\|modal-footer' "$TMP/boards")"
+check "  ...and no dialog of our own"      "0" "$(grep -cE 'modal-dialog-centered|modal-header py-2|modal-title fs-5' "$TMP/boards")"
+check "nothing is stored yet"              "0" "$(sq 'select count(*) from board_panels')"
 curl -sS "$base/board/?id=$gen" -o "$TMP/gen"
-has   "so the defaults stand"          "$TMP/gen" 'data-status="todo"'
-hasnt "  ...with review among them"    "$TMP/gen" 'data-status="review"'
-check "nor on the board itself"         "0" \
+has   "so the defaults stand"              "$TMP/gen" 'data-status="todo"'
+hasnt "  ...with review among them"        "$TMP/gen" 'data-status="review"'
+check "nor on the board itself"            "0" \
   "$(grep -cE 'form-control-sm|form-select-sm|btn-sm' "$TMP/gen")"
 
+t "the board edit dialog"
+curl -sS "$base/boards/edit-dialog.php?id=$lab" -o "$TMP/edit"
+has   "the name, ready to change"   "$TMP/edit" 'name="name"'
+has   "  ...carrying the board's id" "$TMP/edit" '<input type="hidden" name="id" value="'"$lab"'">'
+has   "  ...and its name in it"      "$TMP/edit" 'value="Lab Hardware"'
+has   "  ...and its description"     "$TMP/edit" '>Benches, instruments and rigs</textarea>'
+has   "  ...as a textarea, not an input" "$TMP/edit" '<textarea class="form-control" id="edit_bd"'
+has   "  ...both labelled"           "$TMP/edit" 'for="edit_bn"'
+has   "  ...each field its own"      "$TMP/edit" 'for="edit_bd"'
+has   "saving through the old endpoint" "$TMP/edit" 'action="boards/save_board.php"'
+has   "deleting through the old one"    "$TMP/edit" 'action="boards/delete_board.php"'
+has   "  ...named by its button"          "$TMP/edit" 'form="delete_board"'
+has   "  ...after confirming"            "$TMP/edit" "onsubmit=\"return confirm('Delete this board?"
+# The whole of the dialog, laid out as Bootstrap's example lays it out, because a footer holding the
+# buttons is a sibling of the body rather than a part of it and the form cannot be in both.
+has   "the whole dialog, not just a body" "$TMP/edit" '<div class="modal-content" id="board-content">'
+# The id travels with the content, because the swap replaces the div its own hx-target named: without
+# it here, a second visit to this dialog would have no target left and would open empty.
+check "  ...and the id the swap needs"   "1" "$(grep -c 'id="board-content"' "$TMP/edit")"
+has   "  ...starting with the header"      "$TMP/edit" '<div class="modal-header">'
+has   "  ...naming the board, server-side" "$TMP/edit" 'Edit board &mdash; Lab Hardware'
+has   "  ...then the body"                 "$TMP/edit" '<div class="modal-body">'
+has   "  ...and a footer"                  "$TMP/edit" '<div class="modal-footer">'
+has   "  ...with the buttons in it"        "$TMP/edit" 'form="board-form">Save board</button>'
+# The form is the body's and the footer sits beside it, as siblings under the modal-content, which is
+# the example's shape: a footer inside the form could not be a .modal-footer. So its button names
+# the form to submit, which is what the form attribute is for.
+has   "the form in the body, named"        "$TMP/edit" '<div class="modal-body">'
+has   "  ...and the footer beside it"       "$TMP/edit" '</form>'
+has   "  ...pointing back at the form"      "$TMP/edit" 'form="board-form"'
+has   "  ...with a Close to dismiss it"    "$TMP/edit" 'data-bs-dismiss="modal">Cancel</button>'
+check "no dialog chrome of our own"        "0" \
+  "$(grep -cE 'modal-dialog-centered|modal-header py-2|modal-title fs-5' "$TMP/edit")"
+check "and no shrunk control in it"      "0" \
+  "$(grep -cE 'form-control-sm|form-select-sm|btn-sm' "$TMP/edit")"
+# The same form again from the page endpoint, which is a separate script and not a branch in the
+# fragment's: it is where the button's href goes when htmx is not there to upgrade it, so it has to
+# stand on its own.
+curl -sS "$base/boards/edit.php?id=$lab" -o "$TMP/edit_page"
+has "the same form without htmx"    "$TMP/edit_page" 'name="name"'
+has "  ...named as a heading"        "$TMP/edit_page" '<h1 class="h4">Edit board</h1>'
+has "  ...narrow like the other forms" "$TMP/edit_page" 'page-center'
+hasnt "  ...and no modal in it"      "$TMP/edit_page" 'modal-content'
+check "  ...closed properly"         "1" "$(grep -c '</html>' "$TMP/edit_page")"
+# The two draw the fields from board_form_fields(), so the field names and the length limits cannot
+# drift between them the way a copy would. Checked on both renderings rather than in the helper.
+check "the fragment's field is intact" "1" "$(grep -c 'maxlength="80"' "$TMP/edit")"
+check "  ...and the page's too"         "1" "$(grep -c 'maxlength="80"' "$TMP/edit_page")"
+# A board page is about the work on the board, not about administering the board. It used to carry an
+# admin's Edit link, which was a second way into this dialog and reached by leaving the board; boards
+# are edited at /boards/, where the one dialog is.
+curl -sS "$base/board/?id=$lab" -o "$TMP/board"
+hasnt "the board page does not offer to rename it" "$TMP/board" 'boards/edit.php'
+hasnt "  ...and no second way into the dialog"      "$TMP/board" 'board-modal'
+
+t "creating a board in the same dialog"
+curl -sS "$base/boards/edit-dialog.php" -o "$TMP/new"
+has   "the same form, with no board"  "$TMP/new" 'name="name"'
+# Not an absent id: save_board.php reads 0 as "no board yet", and one form serving both is the point.
+has   "  ...and an id of zero to save against" "$TMP/new" '<input type="hidden" name="id" value="0">'
+has   "  ...saying Create rather than Save" "$TMP/new" 'Create board'
+hasnt "  ...and nothing to delete"    "$TMP/new" 'form="delete_board"'
+curl -sS -X POST "$base/boards/save_board.php" -d 'name=Scratch' -d 'description=Temporary' -o /dev/null
+check "which creates one" "1" "$(sq "select count(*) from boards where name='Scratch'")"
+check "  ...on its own" "0" "$(sq 'select count(*) from board_panels')"
+curl -sS -X POST "$base/boards/delete_board.php" \
+  -d "id=$(sq "select id from boards where name='Scratch'")" -o /dev/null
+check "and the delete button removes it" "0" "$(sq "select count(*) from boards where name='Scratch'")"
+
 t "the panel dialog"
-curl -sS -H 'HX-Request: true' "$base/boards/panels.php?id=$lab" -o "$TMP/panels"
+curl -sS "$base/boards/panels-dialog.php?id=$lab" -o "$TMP/panels"
 check "every status is offered" "9" "$(grep -o 'name="panels\[[a-z_]*\]"' "$TMP/panels" | sort -u | wc -l)"
 has   "including the ones with no column by default" "$TMP/panels" 'name="panels[blocked]"'
 has   "  ...and the last of them"                       "$TMP/panels" 'name="panels[cancelled]"'
@@ -321,12 +451,30 @@ check "  ...and the right one per status" \
   "draft:hidden backlog:hidden todo:required in_progress:required blocked:hidden review_ready:hidden review:hidden done:required cancelled:hidden" \
   "$(chosen_panels "$TMP/panels")"
 has   "and it saves through its own endpoint" "$TMP/panels" 'action="boards/save_panels.php"'
-# Asked for as a page rather than a fragment, it is a page: this is the whole fallback for a browser
-# with no JavaScript, so it has to stand on its own.
+# The whole of the dialog here too, for the same reason: the buttons are in a .modal-footer beside the
+# body, so a fragment carrying only a body could not put them anywhere.
+has   "the whole dialog, not just a body" "$TMP/panels" '<div class="modal-content" id="panels-content">'
+check "  ...and the id the swap needs"     "1" "$(grep -c 'id="panels-content"' "$TMP/panels")"
+has   "  ...starting with the header"      "$TMP/panels" '<div class="modal-header">'
+has   "  ...naming the board, server-side" "$TMP/panels" 'Panels &mdash; Lab Hardware'
+has   "  ...then the body"                 "$TMP/panels" '<div class="modal-body">'
+has   "  ...and a footer"                  "$TMP/panels" '<div class="modal-footer">'
+has   "  ...with the buttons in it"        "$TMP/panels" 'form="panels-form"'
+has   "  ...and a Close to dismiss it"     "$TMP/panels" 'data-bs-dismiss="modal">Close</button>'
+has   "the form in the body"               "$TMP/panels" '<div class="modal-body">'
+check "no dialog chrome of our own"        "0" \
+  "$(grep -cE 'modal-dialog-centered|modal-header py-2|modal-title fs-5' "$TMP/panels")"
+# The same settings again from the page endpoint: a separate script, not a branch, and the one the
+# button's href goes to when htmx is not there.
 curl -sS "$base/boards/panels.php?id=$lab" -o "$TMP/panels_page"
 has "the same form without htmx"        "$TMP/panels_page" 'name="panels[todo]"'
 has "  ...named as a heading"            "$TMP/panels_page" '<h1 class="h4">Panels</h1>'
-hasnt "  ...and no dialog chrome"        "$TMP/panels_page" 'data-bs-dismiss'
+hasnt "  ...and no modal in it"          "$TMP/panels_page" 'modal-content'
+# Nine rows either way, and the same chosen answers, because board_panel_rows() draws them once. A
+# copy here would drift the moment a status was renamed or the cost of Never moved.
+check "  ...all nine rows"                "9" "$(grep -c '<select' "$TMP/panels_page")"
+check "  ...and the same answers" "draft:hidden backlog:hidden todo:required in_progress:required blocked:hidden review_ready:hidden review:hidden done:required cancelled:hidden" \
+  "$(chosen_panels "$TMP/panels_page")"
 check "  ...closed properly"             "1" "$(grep -c '</html>' "$TMP/panels_page")"
 
 t "turning a panel on"
@@ -384,7 +532,7 @@ hasnt "and the last card leaving takes it again" "$TMP/gen" 'data-status="todo"'
 
 t "hiding a panel keeps what is in it"
 # Said beside the status, so the cost of choosing Never is visible while choosing it.
-curl -sS -H 'HX-Request: true' "$base/boards/panels.php?id=$gen" -o "$TMP/panels"
+curl -sS "$base/boards/panels-dialog.php?id=$gen" -o "$TMP/panels"
 has "the count rides on the choice"   "$TMP/panels" 'Never (1)'
 curl -sS -X POST "$base/boards/save_panels.php" -d "id=$gen" \
   -d 'panels[todo]=optional' -d 'panels[in_progress]=hidden' -d 'panels[done]=required' \
@@ -398,11 +546,25 @@ curl -sS "$base/list/?board=$gen" -o "$TMP/list"
 has "the list view still has it"      "$TMP/list" "Motor Interface"
 check "and it is still on the board" "1" \
   "$(sq "select count(*) from project_boards where project_id=$epic_id and board_id=$gen")"
-curl -sS "$base/boards/" -o "$TMP/boards"
-has "  ...and the card says so on the board itself" "$TMP/boards" 'in hidden columns'
 # Handed back, because the sections below read this board and expect the epic to be on it. Review
 # is left on: the subproject further down is filed on this board in review, and whether it is drawn
 # is decided by this setting rather than by anything else.
+curl -sS -X POST "$base/boards/save_panels.php" -d "id=$gen" \
+  -d 'panels[todo]=required' -d 'panels[in_progress]=required' -d 'panels[done]=required' \
+  -d 'panels[blocked]=hidden' -d 'panels[review]=required' -d 'panels[review_ready]=hidden' -o /dev/null
+
+t "a board with nothing left to draw"
+# An admin can reach this by configuration: set every panel to Never and render_board() draws no
+# columns at all, so the page says so rather than coming up blank. It was untested, and the one link
+# it leaves to /boards/ is now the only one a board page has, the Edit link having gone.
+# Only the three defaults need posting; every other status is hidden to begin with.
+curl -sS -X POST "$base/boards/save_panels.php" -d "id=$gen" \
+  -d 'panels[todo]=hidden' -d 'panels[in_progress]=hidden' -d 'panels[done]=hidden' -o /dev/null
+curl -sS "$base/board/?id=$gen" -o "$TMP/gen"
+has   "the page says why it is blank" "$TMP/gen" 'nothing to draw'
+has   "  ...and points at the fix"    "$TMP/gen" 'href="boards/#board-'"$gen"'"'
+check "  ...with no columns drawn"     "0" "$(grep -c 'data-status=' "$TMP/gen")"
+# Handed back, for the same reason as the section above: the sections below read this board.
 curl -sS -X POST "$base/boards/save_panels.php" -d "id=$gen" \
   -d 'panels[todo]=required' -d 'panels[in_progress]=required' -d 'panels[done]=required' \
   -d 'panels[blocked]=hidden' -d 'panels[review]=required' -d 'panels[review_ready]=hidden' -o /dev/null
@@ -422,6 +584,22 @@ curl -sS -o /dev/null -X POST "$base/boards/save_board.php" -d "id=$lab" \
   -d 'name=Lab Hardware' -d 'description=Benches, instruments and rigs'
 check "renaming the board leaves its panels alone" "1" \
   "$(sq "select count(*) from board_panels where board_id=$lab")"
+# The description is a textarea now, so its value is the element's text rather than an attribute
+# value: escaping an attribute is not enough, since a "<" that reaches the markup closes the tag.
+curl -sS -o /dev/null -X POST "$base/boards/save_board.php" -d "id=$lab" \
+  -d 'name=Lab Hardware' --data-urlencode 'description="rigs" & <b>racks</b>'
+curl -sS "$base/boards/edit-dialog.php?id=$lab" -o "$TMP/edit2"
+curl -sS "$base/boards/edit.php?id=$lab" -o "$TMP/edit_page2"
+has   "a description carrying markup comes back escaped" "$TMP/edit2" \
+  '&quot;rigs&quot; &amp; &lt;b&gt;racks&lt;/b&gt;</textarea>'
+has   "  ...in the dialog, and not as a tag"     "$TMP/edit2" '&lt;b&gt;racks&lt;/b&gt;'
+has   "  ...and on the page too"                  "$TMP/edit_page2" '&lt;b&gt;racks&lt;/b&gt;'
+hasnt "  ...with no raw tag anywhere in either"    "$TMP/edit2" '<b>racks</b>'
+check "and it survived the round trip" "1" \
+  "$(sq "select count(*) from boards where description='\"rigs\" & <b>racks</b>'")"
+# Put back, because the sections below read this board.
+curl -sS -o /dev/null -X POST "$base/boards/save_board.php" -d "id=$lab" \
+  -d 'name=Lab Hardware' -d 'description=Benches, instruments and rigs'
 
 t "put the project on a board"
 check "a project can start on no board" "0" "$(sq "select count(*) from project_boards where project_id=$new_id")"
@@ -527,6 +705,22 @@ hasnt "and leaks nothing else"    "$TMP/gen_board" "Bench Power Supply"
 curl -sS "$base/board/?id=$lab" -o "$TMP/board"
 check "  ...and now sits in review" "review" "$(column_of "$TMP/board" 'class="card t-research')"
 has   "  ...still coloured by its type" "$TMP/board" 'class="card t-research'
+
+t "the drag highlight in the browser"
+# Everything above exercises the endpoint a drop reaches. This exercises the outline the drop is
+# aimed by, which lives in app.js and is the one part of a move that no amount of fetching a page
+# can check. The panel used to keep a dashed border whenever a drag ended without a card landing in
+# it — a text selection released over a panel, a drop in the gap between them, Escape — so it is
+# worth a suite that runs the handlers rather than reading them.
+if command -v node >/dev/null 2>&1; then
+  if node "$ROOT/tests/drag.js" >"$TMP/drag.out" 2>&1; then
+    echo "ok   the drag highlight behaves ($(grep -c '^ok' "$TMP/drag.out") cases, run separately with node tests/drag.js)"
+  else
+    fails=$((fails+1)); echo "FAIL the drag highlight behaves:"; sed 's/^/  /' "$TMP/drag.out"
+  fi
+else
+  echo "SKIP the drag highlight: no node, so app.js cannot be run. See tests/drag.js."
+fi
 
 t "PATCH status"
 curl -sS -X PATCH "$base/project/update_status.php" -d "id=$new_id" -d 'status=in_progress' -o "$TMP/json"

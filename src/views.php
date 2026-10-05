@@ -395,12 +395,12 @@ function render_board(?int $board_id = null): void {
         }
         ?>
         <section data-status="<?= $status ?>">
-            <div class="board-col bg-body-secondary rounded-3 p-2 h-100">
-                <h2 class="h6 d-flex align-items-center gap-2 px-1 py-2 mb-1">
-                    <span class="badge rounded-pill text-bg-<?= TONE[$status] ?>"><?= count($items) ?></span>
+            <div class="card board-col h-100">
+                <div class="card-header d-flex align-items-center gap-2">
                     <?= LABELS[$status] ?>
-                </h2>
-                <div class="d-flex flex-column gap-2">
+                    <span class="badge rounded-pill text-bg-<?= TONE[$status] ?>"><?= count($items) ?></span>
+                </div>
+                <div class="card-body d-flex flex-column gap-2">
                     <?php foreach ($items as $project):
                         // A subproject keeps its own column, status and drag behaviour. It is only
                         // wrapped so the reader can see at a glance which project it belongs to,
@@ -419,6 +419,84 @@ function render_board(?int $board_id = null): void {
         </section>
         <?php
     }
+}
+
+
+/**
+ * The name and description of one board, as the two fields that set them.
+ *
+ * The board form is rendered in two places — as the fragment a dialog is filled with, and as the page
+ * of its own that the same button's href points at — and the two must not be able to disagree about
+ * the field names, the length limits or what an empty description means. Only the shell around them
+ * differs; these do not.
+ *
+ * @param array|null $b The board, or null when there is not one yet and this is the create form.
+ */
+function board_form_fields(?array $b): void {
+    ?>
+    <div class="mb-3">
+        <label class="form-label" for="edit_bn">Name</label>
+        <input class="form-control" id="edit_bn" name="name" required maxlength="80"
+               value="<?= h($b['name'] ?? '') ?>">
+    </div>
+    <div>
+        <label class="form-label" for="edit_bd">
+            Description <span class="text-body-secondary">(optional)</span>
+        </label>
+        <?php /* A textarea rather than an input: a board's description is a sentence or two, and one
+              // line of a text box reads it sideways. The value goes inside the element rather than
+              // in a value attribute, which is why the tags are on one line — a newline straight
+              // after <textarea> would become part of the value — and it is escaped as text, the
+              // same treatment a project's description already gets. */ ?>
+        <textarea class="form-control" id="edit_bd" name="description" maxlength="200" rows="3"><?= h($b['description'] ?? '') ?></textarea>
+    </div>
+    <?php
+}
+
+
+/**
+ * Every status a board could have as a column, each beside its own answer.
+ *
+ * Shared for the same reason as board_form_fields(): a name, a count and a select per status, in the
+ * one place. Which is why the count rides on the Never option rather than only beside the name — the
+ * cost of hiding a column is the thing worth seeing at the moment it is chosen, and it cannot be seen
+ * if it is drawn in a second copy that has drifted from this one.
+ *
+ * @param int   $id     The board being set up.
+ * @param array $modes  Chosen mode per status, from board_panel_modes().
+ * @param array $counts Projects per status on this board, keyed by status.
+ */
+function board_panel_rows(int $id, array $modes, array $counts): void {
+    ?>
+    <div class="picker-list">
+        <?php foreach (PANEL_ORDER as $status): $n = $counts[$status] ?? 0; ?>
+            <?php // Plain rows, no card around each one: a name and its answer, in a list. A border
+                  // and a fill per row made nine little boxes out of what is really one list. The
+                  // picker-list wrapper is what keeps the list from growing past the dialog. ?>
+            <div class="d-flex align-items-center gap-2 mb-1">
+                <label class="text-truncate" for="panel-select-<?= $id ?>-<?= $status ?>">
+                    <?= LABELS[$status] ?>
+                    <?php if ($n): ?>
+                        <span class="small text-body-secondary"><?= $n ?></span>
+                    <?php endif ?>
+                </label>
+                <?php // A select rather than a segmented control: three buttons wide did not fit the
+                      // dialog, and the answers do not need to be on screen together when the count
+                      // beside the name already says what choosing Never would cost. That cost rides
+                      // on the option itself, so it is there at the moment it is picked. ?>
+                <select class="form-select w-auto ms-auto"
+                        id="panel-select-<?= $id ?>-<?= $status ?>" name="panels[<?= $status ?>]">
+                    <?php foreach (PANEL_MODES as $mode => $label):
+                        $cost = $mode === 'hidden' && $n ? ' (' . $n . ')' : ''; ?>
+                        <option value="<?= $mode ?>"<?= $modes[$status] === $mode ? ' selected' : '' ?>>
+                            <?= $label ?><?= $cost ?>
+                        </option>
+                    <?php endforeach ?>
+                </select>
+            </div>
+        <?php endforeach ?>
+    </div>
+    <?php
 }
 
 
@@ -528,10 +606,10 @@ foreach ($draft as $key => $d):
     $taken = array_map('intval', $d['chosen']); ?>
     <div class="modal fade" id="draft-picker-<?= h($key) ?>-modal" tabindex="-1"
          aria-labelledby="draft-picker-<?= h($key) ?>-title" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-dialog">
             <div class="modal-content">
-                <div class="modal-header py-2">
-                    <h2 class="modal-title fs-5" id="draft-picker-<?= h($key) ?>-title"><?= h($d['title']) ?></h2>
+                <div class="modal-header">
+                    <h5 class="modal-title" id="draft-picker-<?= h($key) ?>-title"><?= h($d['title']) ?></h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
