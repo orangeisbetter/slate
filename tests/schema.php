@@ -20,7 +20,8 @@ function ok(bool $condition, string $what): void {
 $tables = array_column($db->query("SELECT name FROM sqlite_master WHERE type='table'")->fetchAll(), 'name');
 echo "tables\n";
 foreach (['users', 'projects', 'comments', 'status_log', 'project_assignees', 'roles', 'user_roles',
-          'invites', 'login_attempts', 'schema_migrations', 'boards', 'project_boards'] as $table) {
+          'invites', 'login_attempts', 'schema_migrations', 'boards', 'project_boards',
+          'board_panels'] as $table) {
     ok(in_array($table, $tables, true), $table);
 }
 
@@ -69,6 +70,16 @@ foreach (['id', 'name', 'description', 'created_by'] as $column) {
 foreach (['project_id', 'board_id', 'added_by'] as $column) {
     ok(in_array($column, $columns('project_boards'), true), "project_boards.$column");
 }
+foreach (['board_id', 'status', 'mode'] as $column) {
+    ok(in_array($column, $columns('board_panels'), true), "board_panels.$column");
+}
+// The mode is the whole of what a panel can be, so it is constrained in the schema rather than
+// trusted from the form: a row saying something else would be a panel nothing knows how to draw.
+$ddl = (string)$db->query("SELECT sql FROM sqlite_master WHERE type='table' AND name='board_panels'")->fetchColumn();
+ok(str_contains($ddl, "'required'") && str_contains($ddl, "'optional'") && str_contains($ddl, "'hidden'"),
+   'board_panels constrains its mode');
+ok(str_contains($ddl, 'PRIMARY KEY(board_id, status)'),
+   'board_panels is keyed on the pair');
 // The join table is what lets a project sit on several boards, so it is keyed on both sides:
 // without that, a second click would file the same project twice.
 $ddl = (string)$db->query("SELECT sql FROM sqlite_master WHERE type='table' AND name='project_boards'")->fetchColumn();

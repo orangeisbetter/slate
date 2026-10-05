@@ -88,6 +88,19 @@ document.addEventListener('hidden.bs.modal', e => {
   if (search) search.value = '';
 }, true);
 
+// ---- panel dialog title ----
+// Every board's Panels button points at one dialog, so the shell cannot know which board it is
+// about to show. Bootstrap hands over the button that opened it as relatedTarget, and the name rides
+// along on that button, so the heading names a board rather than just saying "Panels" — which on a
+// page of several boards names nothing. Left alone, the body is whatever the last open put there.
+document.addEventListener('show.bs.modal', e => {
+  const opener = e.relatedTarget;
+  const title = e.target.querySelector && e.target.querySelector('.modal-title');
+  if (opener && opener.dataset && opener.dataset.boardName && title) {
+    title.textContent = 'Panels — ' + opener.dataset.boardName;
+  }
+});
+
 // ---- board drag and drop ----
 // Dropping a card posts the new status plus the board it came from, and htmx swaps the
 // re-rendered board back in. Only board/ renders this, and it tags <main id="board"> with

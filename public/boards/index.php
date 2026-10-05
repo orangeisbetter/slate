@@ -6,6 +6,9 @@ require __DIR__ . '/../../src/bootstrap.php';
 
 $admin = is_admin($me);
 $boards = boards();
+// Panel settings are per board, but the page shows every board at once, so the counts that explain
+// them are fetched once here rather than per card.
+$counts_by_board = board_status_counts();
 $error = $_GET['error'] ?? null;
 $unassigned = (int)q('SELECT COUNT(*) FROM projects p
                      WHERE NOT EXISTS (SELECT 1 FROM project_boards pb WHERE pb.project_id=p.id)')
@@ -54,26 +57,67 @@ page_start('Boards');
                                 <input type="hidden" name="id" value="<?= $id ?>">
                                 <div class="col-12">
                                     <label class="form-label small" for="bn<?= $id ?>">Name</label>
-                                    <input class="form-control form-control-sm" id="bn<?= $id ?>" name="name"
+                                    <input class="form-control" id="bn<?= $id ?>" name="name"
                                            required maxlength="80" value="<?= h($board['name']) ?>">
                                 </div>
                                 <div class="col-12">
                                     <label class="form-label small" for="bd<?= $id ?>">Description</label>
-                                    <input class="form-control form-control-sm" id="bd<?= $id ?>" name="description"
+                                    <input class="form-control" id="bd<?= $id ?>" name="description"
                                            maxlength="200" value="<?= h($board['description']) ?>">
                                 </div>
                                 <div class="col-12 d-flex gap-2">
-                                    <button class="btn btn-outline-primary btn-sm">Save</button>
+                                    <button class="btn btn-outline-primary">Save</button>
                                 </div>
                             </form>
-                            <form method="post" action="boards/delete_board.php" class="mt-2"
-                                  onsubmit="return confirm('Delete this board? Its projects stay, but on no board.')">
-                                <input type="hidden" name="id" value="<?= $id ?>">
-                                <button class="btn btn-outline-danger btn-sm">Delete board</button>
-                            </form>
+                            <?php
+                            // The columns this board has right now, as badges rather than a form: the
+                            // answer to "what does this board look like" belongs on the card, but nine
+                            // controls per board does not. The dialog is where a column gets changed.
+                            $modes = board_panel_modes($id);
+                            $here = $counts_by_board[$id] ?? [];
+                            $drawn = array_filter($modes, fn($mode) => $mode !== 'hidden');
+                            $stranded = 0;
+                            foreach ($modes as $status => $mode) {
+                                if ($mode === 'hidden') {
+                                    $stranded += $here[$status] ?? 0;
+                                }
+                            }
+                            ?>
+                            <div class="d-flex align-items-center gap-2 mt-3">
+                                <span class="small text-body-secondary">Columns</span>
+                                <?php foreach ($drawn as $status => $mode): ?>
+                                    <span class="badge rounded-pill text-bg-<?= TONE[$status] ?><?= $mode === 'optional' ? ' border border-2' : '' ?>"
+                                          title="<?= $mode === 'optional' ? 'Shown only once something is in it' : 'Always shown' ?>">
+                                        <?= LABELS[$status] ?>
+                                    </span>
+                                <?php endforeach ?>
+                                <?php if (!$drawn): ?>
+                                    <span class="small text-body-secondary">none</span>
+                                <?php endif ?>
+                                <?php if ($stranded): ?>
+                                    <span class="small text-danger" title="Still on the board with their status untouched, and still in the list view.">
+                                        <?= $stranded ?> in hidden columns
+                                    </span>
+                                <?php endif ?>
+                            </div>
+                            <div class="d-flex gap-2 mt-2">
+                                <!-- A link that htmx upgrades: without JavaScript this navigates to
+                                     panels.php, which renders the same form as a page of its own. The
+                                     dialog's title is set from the button by app.js. -->
+                                <a class="btn btn-outline-secondary" href="boards/panels.php?id=<?= $id ?>"
+                                   data-panel-open data-board="<?= $id ?>" data-board-name="<?= h($board['name']) ?>"
+                                   data-bs-toggle="modal" data-bs-target="#panels-modal"
+                                   hx-get="boards/panels.php?id=<?= $id ?>" hx-target="#panels-body"
+                                   hx-swap="innerHTML">Panels</a>
+                                <form method="post" action="boards/delete_board.php" class="m-0"
+                                      onsubmit="return confirm('Delete this board? Its projects stay, but on no board.')">
+                                    <input type="hidden" name="id" value="<?= $id ?>">
+                                    <button class="btn btn-outline-danger">Delete board</button>
+                                </form>
+                            </div>
                         <?php else: ?>
                             <div class="mt-3">
-                                <a class="btn btn-outline-secondary btn-sm" href="board/?id=<?= $id ?>">Open board</a>
+                                <a class="btn btn-outline-secondary" href="board/?id=<?= $id ?>">Open board</a>
                             </div>
                         <?php endif ?>
                     </div>
@@ -102,6 +146,21 @@ page_start('Boards');
             </div>
         </div>
     <?php endif ?>
+
+    <?php /* One dialog for every board, rather than one per card. The body arrives from panels.php
+             over htmx and names the board it belongs to, so a single shell is enough however many
+             boards there are. app.js puts the board's name in the title. */ ?>
+    <div class="modal fade" id="panels-modal" tabindex="-1" aria-labelledby="panels-title" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h2 class="modal-title fs-5" id="panels-title">Panels</h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="panels-body"></div>
+            </div>
+        </div>
+    </div>
 </div>
 <?php
 page_end();

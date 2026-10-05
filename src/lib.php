@@ -4,7 +4,19 @@
 // which this file deliberately does not do for itself.
 const LABELS = ['draft' => 'Draft', 'backlog' => 'Backlog', 'todo' => 'To do', 'in_progress' => 'In progress',
                 'blocked' => 'Blocked', 'review' => 'In review', 'done' => 'Done', 'cancelled' => 'Cancelled', 'review_ready' => 'Ready for review'];
-const BOARD_STATUSES = ['todo', 'in_progress', 'review_ready', 'review', 'done'];   // board columns; other statuses only appear in the list view
+// Every status a project can hold, in the order work moves through them. A board draws one column
+// per status it has a panel for, so this is the list of columns a board can possibly have. It is
+// deliberately not LABELS order: review_ready was appended to LABELS when it was added, but it sits
+// before review here, because that is the order the two actually happen in.
+const PANEL_ORDER = ['draft', 'backlog', 'todo', 'in_progress', 'blocked', 'review_ready', 'review',
+                     'done', 'cancelled'];
+// How a board treats each of its panels. 'required' draws the column even when it is empty,
+// 'optional' draws it only once something is in it, 'hidden' never draws it.
+const PANEL_MODES = ['required' => 'Always', 'optional' => 'Only when it has projects', 'hidden' => 'Never'];
+// What a board that has never been configured gets: the three columns most work actually moves
+// through. Every other status is off until an admin asks for it, which is a display choice and not
+// a change to any project — see board_panel_modes().
+const DEFAULT_BOARD_PANELS = ['todo', 'in_progress', 'done'];
 const TYPES = ['task' => 'Task', 'bug' => 'Bug', 'feature' => 'Feature', 'epic' => 'Epic', 'research' => 'Research'];
 
 const MIN_PASSWORD = 10;              // characters
@@ -324,6 +336,51 @@ function boards(): array {
 
 function board(int $id): ?array {
     return q('SELECT * FROM boards WHERE id=?', [$id])->fetch() ?: null;
+}
+
+/**
+ * How a board treats each of its panels: every PANEL_ORDER status mapped to one of PANEL_MODES.
+ *
+ * Absent rows mean the default rather than "never", so a board nobody has configured still gets the
+ * three columns most work moves through. That is the whole reason for the default: without it, every
+ * existing board would come up empty the first time this was deployed.
+ *
+ * A null board id means there is no board to have an opinion — the one caller that can pass one is
+ * move.php after a drop with no board id, which re-renders everything — so it gets the default too.
+ */
+function board_panel_modes(?int $board_id): array {
+    $modes = [];
+    foreach (PANEL_ORDER as $status) {
+        $modes[$status] = in_array($status, DEFAULT_BOARD_PANELS, true) ? 'required' : 'hidden';
+    }
+    if ($board_id === null) {
+        return $modes;
+    }
+    foreach (q('SELECT status, mode FROM board_panels WHERE board_id=?', [$board_id]) as $row) {
+        // A status that is not a column any more is ignored rather than added: the columns are
+        // PANEL_ORDER, so a row left behind by a rename must not bring an old column back.
+        if (isset($modes[$row['status']]) && isset(PANEL_MODES[$row['mode']])) {
+            $modes[$row['status']] = $row['mode'];
+        }
+    }
+    return $modes;
+}
+
+/**
+ * How many projects sit in each status on each board: [board_id => [status => n]].
+ *
+ * The boards page uses this to say what hiding a panel would cost before it is saved, since a panel
+ * set to never shown takes its projects off the board without touching them. One query for the
+ * whole page rather than one per board, because the page renders every board at once.
+ */
+function board_status_counts(): array {
+    $out = [];
+    foreach (q('SELECT pb.board_id, p.status, COUNT(*) AS n
+                FROM project_boards pb JOIN projects p ON p.id = pb.project_id
+                GROUP BY pb.board_id, p.status') as $row) {
+        $out[(int)$row['board_id']][$row['status']] = (int)$row['n'];
+    }
+    return $out;
 }
 
 /**

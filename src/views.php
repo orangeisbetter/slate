@@ -378,8 +378,21 @@ function render_board(?int $board_id = null): void {
     $ctx = ['assignees' => $assignees, 'comments' => $comment_counts, 'titles' => $titles,
             'sub_counts' => $sub_counts, 'subs_done' => $subs_done, 'users' => $USERS];
 
-    foreach (BOARD_STATUSES as $status) {
+    // Which panels this board actually draws, and which of those wait until there is something in
+    // them. Hidden panels are skipped outright, so a project sitting in one is on the board without
+    // being on the screen: the boards page says how many that would hide before it is saved, and
+    // the list view is where those projects are still reachable.
+    $modes = board_panel_modes($board_id);
+    foreach (PANEL_ORDER as $status) {
         $items = array_filter($all, fn($project) => $project['status'] === $status);
+        if ($modes[$status] === 'hidden') {
+            continue;
+        }
+        // An optional panel with nothing in it is not drawn at all, which also means it is not a
+        // drop target: a card cannot be dragged somewhere that is not on the page.
+        if ($modes[$status] === 'optional' && !$items) {
+            continue;
+        }
         ?>
         <section data-status="<?= $status ?>">
             <div class="board-col bg-body-secondary rounded-3 p-2 h-100">
@@ -440,7 +453,7 @@ foreach ($comments as $comment) {
 // $boards only matters when creating: an existing project's boards are edited from its own
 // page, in the Boards panel, so the edit form leaves them alone.
 function project_form(array $project, ?int $id, array $boards = [], string $action = 'new/add.php'): void {
-    $board_statuses = h(implode(', ', array_map(fn($status) => LABELS[$status], BOARD_STATUSES)));
+    $default_panels = h(implode(', ', array_map(fn($status) => LABELS[$status], DEFAULT_BOARD_PANELS)));
     // The create form's two pickers. Nothing here is saved until the form is posted, so there is
     // no row for the server to send back: this is the one place a row is built in the browser.
     // They are marked data-draft-picker and the Create button submits them like any other field.
@@ -483,7 +496,7 @@ function project_form(array $project, ?int $id, array $boards = [], string $acti
         <label class="form-label" for="due">Due date</label>
         <input type="date" class="form-control" id="due" name="due_date" value="<?= h($project['due_date']) ?>">
     </div>
-    <div class="col-12 form-text mt-1">Only <?= $board_statuses ?> appear on the board. Other statuses (such as Draft) show up in the list view.</div>
+    <div class="col-12 form-text mt-1">A board draws one column per status it has a panel for, and a board nobody has changed draws <?= $default_panels ?>. An admin sets the rest per board. Whatever a board does not draw is still in the list view.</div>
 <?php foreach ($draft as $key => $d): $taken = array_map('intval', $d['chosen']); ?>
     <div class="col-12" data-draft-picker="<?= h($key) ?>" data-draft-field="<?= h($d['field']) ?>">
         <div class="form-label"><?= h($d['label']) ?></div>

@@ -61,7 +61,7 @@ serve() {   # serve <port> <docroot> [env assignment...]
 echo "== migrate =="
 mkdir -p "$TMP/data"
 cp -r "$ROOT/src" "$ROOT/public" "$ROOT/db" "$ROOT/bin" "$TMP/"
-is "fresh migrate applies every file" "3" "$(cd "$TMP" && php bin/migrate.php | grep -cE '^ *\+ ')"
+is "fresh migrate applies every file" "4" "$(cd "$TMP" && php bin/migrate.php | grep -cE '^ *\+ ')"
 is "re-running applies nothing" "0" "$(cd "$TMP" && php bin/migrate.php | grep -cE '^ *\+ ')"
 php "$ROOT/tests/schema.php" "$TMP/data/board.db" >"$TMP/schema.out" 2>&1
 is "schema check passes against a fresh database" "0" "$?"
@@ -244,10 +244,16 @@ boardable="$(sq "select id from projects where title='Boardable project'")"
 get /boards/ >/dev/null
 has "a member sees the boards" "General"
 hasnt "  ...but not the new-board form" "Create board"
+hasnt "  ...nor the panel settings" "panels[todo]"
+hasnt "  ...nor a way into them" "data-panel-open"
+is "  ...and the dialog is not there to be opened" "403" "$(get '/boards/panels.php?id=1')"
 is "a member cannot create a board" "403" "$(post /boards/save_board.php 'name=Sneaky&description=')"
 is "  ...and none was created" "0" "$(sq "select count(*) from boards where name='Sneaky'")"
 is "a member cannot delete a board" "403" "$(post /boards/delete_board.php 'id=1')"
 is "  ...and it is still there" "1" "$(sq "select count(*) from boards where name='General'")"
+is "  ...with its panels untouched" "0" "$(sq "select count(*) from board_panels")"
+is "a member cannot set a board's panels" "403" \
+  "$(post /boards/save_panels.php 'id=1&panels[todo]=hidden')"
 is "but a member may file work on a board" "302" \
   "$(post /project/project_boards.php "id=$boardable&boards[]=1")"
 is "  ...which is recorded" "1" \
@@ -281,6 +287,19 @@ new_board="$(sq "select id from boards where name='Field Work'")"
 is "  ...with its description" "Out of office" "$(sq "select description from boards where id=$new_board")"
 is "and rename it" "302" "$(post /boards/save_board.php "id=$new_board&name=Field&description=")"
 is "  ...under the new name" "Field" "$(sq "select name from boards where id=$new_board")"
+is "an admin can set its panels" "302" \
+  "$(post /boards/save_panels.php "id=$new_board&panels[todo]=required&panels[in_progress]=optional&panels[blocked]=required")"
+# To do is required by default and blocked is not a column by default, so the row that gets written
+# for the first is none at all and the one for the third is the interesting case: asking for a
+# status that had no column is now a thing the form can express.
+is "  ...keeping only the panels that differ" "2" \
+  "$(sq "select count(*) from board_panels where board_id=$new_board")"
+is "  ...and reading back as asked" "optional" \
+  "$(sq "select mode from board_panels where board_id=$new_board and status='in_progress'")"
+# Blocked was not a column at all before this, and asking for it writes a row where the default
+# would have stored nothing.
+is "  ...including a status with no column by default" "required" \
+  "$(sq "select mode from board_panels where board_id=$new_board and status='blocked'")"
 is "an empty board name is refused" "302" \
   "$(post /boards/save_board.php "id=$new_board&name=&description=")"
 board_url="$(loc)"

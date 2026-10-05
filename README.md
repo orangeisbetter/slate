@@ -213,6 +213,34 @@ row adds it rather than going anywhere, and the avatars on a board card, because
 link and an anchor inside an anchor does not work. `tests/flows.sh` fails if any page grows a nested
 anchor, and checks that every user reference still has a row to land on.
 
+A board's columns are not fixed. Every status a project can hold is a panel, and the board says how it
+wants that one treated: **Always** draws the column even when it is empty, so there is always somewhere
+to drop a card; **Only when it has projects** draws it only while something is in it, which is the
+useful setting for a status a board uses occasionally — and which also means the column is not on the
+page at all while it is empty, so it cannot be dropped into; **Never** leaves it off the board. A board
+with nobody's opinion on record gets To do, In progress and Done, and an admin sets the rest from the
+Panels dialog on `/boards/`. That the list is every status rather than the five that used to have
+columns is the point: a project moved to Blocked used to disappear from its board entirely, because
+nothing matched its status. Hiding a panel hides nothing else: the projects stay on the board with
+their status untouched and are still in the list view, so **Never** is a display choice and not a way
+to lose work. Because the default is the absence of a row, only the panels that differ from it are
+stored in `board_panels`; storing all nine per board would mean nine rows per board, nearly all of them
+repeating the default, and every one of them a place for a row to disagree with it.
+
+The card on `/boards/` answers "what columns does this board have" with a row of badges, and the
+Panels button opens a dialog listing every status beside its own answer: a name, how many projects are
+in it, and a select. The select rather than three buttons because a segmented control does not fit the
+dialog's width, and the count beside the name already says what choosing Never would cost — a cost that
+also rides on the Never option itself, so it is there at the moment it is picked. That button is a link
+to `boards/panels.php`, which renders the same form as a page of its own when JavaScript is off — the
+setting does not depend on a dialog being openable. Panels are saved by their own endpoint rather than
+alongside the board's name, so renaming a board cannot quietly reset them. The setting is per board on
+purpose: review means something different on a board that is a review queue than on one that is not.
+
+Every control on `/boards/`, `/board/` and the dialog is full size. The `-sm` variants were shipped to
+match the rest of the app and were asked for twice before that was noticed, so `flows.sh` fails if a
+shrunk control reappears on either board page.
+
 The assignee and board lists on a project page show a name and nothing else. The picker dialogs next
 to them still show the address and the project count, because clicking a row there adds it rather
 than navigating, and the extra line is what tells two similarly named things apart. The htmx endpoints

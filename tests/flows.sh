@@ -37,6 +37,22 @@ column_of() { php -r '
   echo $m[1] ? end($m[1]) : "none";
 ' "$1" "$2"; }
 
+# The setting chosen for each of the nine panels, as "status:mode status:mode ...", read the way a
+# browser would: find the select for that status, then the option marked selected inside it. Counts of
+# "selected" prove the right number were marked, not that each status kept its own answer.
+chosen_panels() { php -r '
+  $h = file_get_contents($argv[1]);
+  $out = [];
+  foreach (["draft", "backlog", "todo", "in_progress", "blocked", "review_ready", "review", "done",
+            "cancelled"] as $s) {
+    $v = "absent";
+    if (preg_match("/name=\"panels\[" . preg_quote($s, "/") . "\]\">(.*?)<\/select>/s", $h, $m)
+        && preg_match("/value=\"([a-z]+)\" selected/", $m[1], $o)) { $v = $o[1]; }
+    $out[] = "$s:$v";
+  }
+  echo implode(" ", $out);
+' "$1"; }
+
 # The deepest an <a> sits inside another <a>. Above 1 is invalid HTML and makes the inner link
 # unclickable, which is the trap when a card is itself a link. Scans tags rather than using DOM,
 # which the PHP build here does not have.
@@ -263,6 +279,150 @@ curl -sS "$base/" -o "$TMP/dash"
 has "and reopening it puts it back"        "$TMP/dash" "Motor Interface"
 check "with the status it had" "in_progress" "$(sq "select status from projects where id=$epic_id")"
 
+t "a board keeps its default panels until told otherwise"
+curl -sS "$base/boards/" -o "$TMP/boards"
+# The answer to "what columns does this board have" is on the card; changing one is in the dialog.
+# Nine controls per board on this page is what the dialog exists to avoid.
+has   "the columns are summarised"     "$TMP/boards" 'Columns'
+hasnt "  ...with a control for each"    "$TMP/boards" 'name="panels['
+# Every control on a board page is asked to be full size, twice now, after being shipped small to
+# match the rest of the app. Named rather than matching "-sm", so a shadow-sm would not trip it.
+check "no shrunken controls on it"      "0" \
+  "$(grep -cE 'form-control-sm|form-select-sm|btn-sm' "$TMP/boards")"
+check "one dialog, not one per board"  "1" "$(grep -c 'id="panels-modal"' "$TMP/boards")"
+check "and a Panels button per board"  "2" "$(grep -c 'data-panel-open' "$TMP/boards")"
+has   "  ...that htmx loads over"      "$TMP/boards" 'hx-get="boards/panels.php?id='"$lab"'"'
+has   "  ...into that dialog"          "$TMP/boards" 'hx-target="#panels-body"'
+check "nothing is stored yet"          "0" "$(sq 'select count(*) from board_panels')"
+curl -sS "$base/board/?id=$gen" -o "$TMP/gen"
+has   "so the defaults stand"          "$TMP/gen" 'data-status="todo"'
+hasnt "  ...with review among them"    "$TMP/gen" 'data-status="review"'
+check "nor on the board itself"         "0" \
+  "$(grep -cE 'form-control-sm|form-select-sm|btn-sm' "$TMP/gen")"
+
+t "the panel dialog"
+curl -sS -H 'HX-Request: true' "$base/boards/panels.php?id=$lab" -o "$TMP/panels"
+check "every status is offered" "9" "$(grep -o 'name="panels\[[a-z_]*\]"' "$TMP/panels" | sort -u | wc -l)"
+has   "including the ones with no column by default" "$TMP/panels" 'name="panels[blocked]"'
+has   "  ...and the last of them"                       "$TMP/panels" 'name="panels[cancelled]"'
+# A row per status: a name and a select. The three answers were buttons at one point and did not fit
+# the dialog's width, and the rows were each drawn as a little bordered box, which made one list look
+# like nine. Both are here to stop them coming back unnoticed.
+check "  ...one select each" "9" "$(grep -c '<select' "$TMP/panels")"
+check "  ...and no button groups left" "0" "$(grep -c 'btn-group' "$TMP/panels")"
+check "  ...and no box drawn round each row" "0" "$(grep -c 'bg-body-tertiary' "$TMP/panels")"
+has   "  ...each named by its label" "$TMP/panels" \
+  'for="panel-select-'"$lab"'-blocked"'
+# One chosen answer per status, and for this board the three defaults are the ones chosen. Counted by
+# hand in the markup, so each status is read back the way a browser would: its own select, and the
+# option marked selected inside it.
+check "  ...one chosen per status" "9" "$(grep -c ' selected' "$TMP/panels")"
+check "  ...and the right one per status" \
+  "draft:hidden backlog:hidden todo:required in_progress:required blocked:hidden review_ready:hidden review:hidden done:required cancelled:hidden" \
+  "$(chosen_panels "$TMP/panels")"
+has   "and it saves through its own endpoint" "$TMP/panels" 'action="boards/save_panels.php"'
+# Asked for as a page rather than a fragment, it is a page: this is the whole fallback for a browser
+# with no JavaScript, so it has to stand on its own.
+curl -sS "$base/boards/panels.php?id=$lab" -o "$TMP/panels_page"
+has "the same form without htmx"        "$TMP/panels_page" 'name="panels[todo]"'
+has "  ...named as a heading"            "$TMP/panels_page" '<h1 class="h4">Panels</h1>'
+hasnt "  ...and no dialog chrome"        "$TMP/panels_page" 'data-bs-dismiss'
+check "  ...closed properly"             "1" "$(grep -c '</html>' "$TMP/panels_page")"
+
+t "turning a panel on"
+curl -sS -X POST "$base/boards/save_panels.php" -d "id=$lab" \
+  -d 'panels[todo]=required' -d 'panels[in_progress]=required' -d 'panels[review]=required' \
+  -d 'panels[review_ready]=hidden' -d 'panels[done]=required' -o /dev/null
+# Eight of those nine are what this board would get anyway, so one row is all that is written. A row
+# per panel would be eight rows that can only ever agree with the default or need migrating later.
+check "only the panel that differs is stored" "1|required" \
+  "$(sq "select count(*)||'|'||mode from board_panels where board_id=$lab")"
+curl -sS "$base/board/?id=$lab" -o "$TMP/board"
+has   "the panel is drawn"              "$TMP/board" 'data-status="review"'
+hasnt "  ...and review_ready is not"    "$TMP/board" 'data-status="review_ready"'
+curl -sS "$base/board/?id=$gen" -o "$TMP/gen"
+hasnt "  ...on this board alone"        "$TMP/gen" 'data-status="review"'
+check "and the other board has no rows" "0" \
+  "$(sq "select count(*) from board_panels where board_id=$gen")"
+
+t "a status with no column by default can be given one"
+# The reason panels are not limited to the statuses that used to have columns: a project moved to
+# Blocked used to vanish from its board altogether, because no column matched its status.
+curl -sS -X PATCH "$base/project/update_status.php" -d "id=$epic_id" -d 'status=blocked' -o /dev/null
+curl -sS "$base/board/?id=$gen" -o "$TMP/gen"
+hasnt "so the card is on no column at all" "$TMP/gen" "project/?id=$epic_id"
+curl -sS "$base/list/?board=$gen" -o "$TMP/list"
+has   "  ...only in the list view"          "$TMP/list" "Motor Interface"
+curl -sS -X POST "$base/boards/save_panels.php" -d "id=$gen" \
+  -d 'panels[todo]=required' -d 'panels[in_progress]=required' -d 'panels[blocked]=required' \
+  -d 'panels[review]=required' -d 'panels[review_ready]=hidden' -d 'panels[done]=required' -o /dev/null
+curl -sS "$base/board/?id=$gen" -o "$TMP/gen"
+has   "a panel for it brings the card back" "$TMP/gen" 'data-status="blocked"'
+check "  ...into that column" "blocked" "$(column_of "$TMP/gen" "project/?id=$epic_id")"
+# Dragging into it has to work too, which it does not if the column is drawn by anything else.
+curl -sS -X POST "$base/board/move.php" -d "id=$epic_id" -d 'status=in_progress' -d "board=$gen" -o "$TMP/gen"
+check "and it drags back out again" "in_progress" "$(column_of "$TMP/gen" "project/?id=$epic_id")"
+curl -sS -X POST "$base/boards/save_panels.php" -d "id=$gen" \
+  -d 'panels[todo]=required' -d 'panels[in_progress]=required' -d 'panels[blocked]=hidden' \
+  -d 'panels[review]=required' -d 'panels[review_ready]=hidden' -d 'panels[done]=required' -o /dev/null
+
+t "a panel that waits for projects"
+curl -sS -X POST "$base/boards/save_panels.php" -d "id=$gen" \
+  -d 'panels[todo]=optional' -d 'panels[in_progress]=required' -d 'panels[done]=required' \
+  -d 'panels[blocked]=hidden' -d 'panels[review]=required' -d 'panels[review_ready]=hidden' -o /dev/null
+curl -sS "$base/board/?id=$gen" -o "$TMP/gen"
+hasnt "empty, so there is no column"  "$TMP/gen" 'data-status="todo"'
+has   "  ...while a required one is"   "$TMP/gen" 'data-status="in_progress"'
+# Absent rather than an empty box, and that is the point: a column that is not on the page is not
+# somewhere a card can be dragged to, which a column of empty panels would be.
+curl -sS -X POST "$base/board/move.php" -d "id=$epic_id" -d 'status=todo' -d "board=$gen" -o "$TMP/gen"
+has "a card arriving brings it back"   "$TMP/gen" 'data-status="todo"'
+has "  ...with the card in it"         "$TMP/gen" "project/?id=$epic_id"
+curl -sS -X POST "$base/board/move.php" -d "id=$epic_id" -d "status=$epic_was" -d "board=$gen" -o /dev/null
+curl -sS "$base/board/?id=$gen" -o "$TMP/gen"
+hasnt "and the last card leaving takes it again" "$TMP/gen" 'data-status="todo"'
+
+t "hiding a panel keeps what is in it"
+# Said beside the status, so the cost of choosing Never is visible while choosing it.
+curl -sS -H 'HX-Request: true' "$base/boards/panels.php?id=$gen" -o "$TMP/panels"
+has "the count rides on the choice"   "$TMP/panels" 'Never (1)'
+curl -sS -X POST "$base/boards/save_panels.php" -d "id=$gen" \
+  -d 'panels[todo]=optional' -d 'panels[in_progress]=hidden' -d 'panels[done]=required' \
+  -d 'panels[blocked]=hidden' -d 'panels[review]=required' -d 'panels[review_ready]=hidden' -o /dev/null
+curl -sS "$base/board/?id=$gen" -o "$TMP/gen"
+hasnt "the column is gone"            "$TMP/gen" 'data-status="in_progress"'
+check "and nothing was deleted" "in_progress" \
+  "$(sq "select p.status from projects p join project_boards pb on pb.project_id=p.id
+          where pb.board_id=$gen and p.id=$epic_id")"
+curl -sS "$base/list/?board=$gen" -o "$TMP/list"
+has "the list view still has it"      "$TMP/list" "Motor Interface"
+check "and it is still on the board" "1" \
+  "$(sq "select count(*) from project_boards where project_id=$epic_id and board_id=$gen")"
+curl -sS "$base/boards/" -o "$TMP/boards"
+has "  ...and the card says so on the board itself" "$TMP/boards" 'in hidden columns'
+# Handed back, because the sections below read this board and expect the epic to be on it. Review
+# is left on: the subproject further down is filed on this board in review, and whether it is drawn
+# is decided by this setting rather than by anything else.
+curl -sS -X POST "$base/boards/save_panels.php" -d "id=$gen" \
+  -d 'panels[todo]=required' -d 'panels[in_progress]=required' -d 'panels[done]=required' \
+  -d 'panels[blocked]=hidden' -d 'panels[review]=required' -d 'panels[review_ready]=hidden' -o /dev/null
+
+t "panel settings that name nothing real"
+# The redirect carries the complaint, so these are compared whole rather than grepped: the file
+# helpers read a file, and there is no file here.
+err=$(curl -sS -o /dev/null -w '%{redirect_url}' -X POST "$base/boards/save_panels.php" \
+  -d "id=$lab" -d 'panels[whatever]=required')
+check "an unknown status is refused" "$base/boards/?error=Unknown%20panel%3A%20whatever" "$err"
+err=$(curl -sS -o /dev/null -w '%{redirect_url}' -X POST "$base/boards/save_panels.php" \
+  -d "id=$lab" -d 'panels[todo]=sometimes')
+check "an unknown mode is refused" "$base/boards/?error=Unknown%20panel%20setting%3A%20sometimes" "$err"
+# Both are turned away before anything is written, so the two rows saved above are still all there.
+check "and neither changed anything" "2" "$(sq 'select count(*) from board_panels')"
+curl -sS -o /dev/null -X POST "$base/boards/save_board.php" -d "id=$lab" \
+  -d 'name=Lab Hardware' -d 'description=Benches, instruments and rigs'
+check "renaming the board leaves its panels alone" "1" \
+  "$(sq "select count(*) from board_panels where board_id=$lab")"
+
 t "put the project on a board"
 check "a project can start on no board" "0" "$(sq "select count(*) from project_boards where project_id=$new_id")"
 hasnt "and says so"                  "$TMP/dash" "Bench Power Supply"
@@ -273,7 +433,11 @@ check "membership saved" "1" "$(sq "select count(*) from project_boards where pr
 curl -sS "$base/board/?id=$lab" -o "$TMP/board"
 has "card on that board" "$TMP/board" "project/?id=$new_id"
 has "the card carries its number" "$TMP/board" '<span class="ref">#'"$new_id"'</span>'
-has "board column"       "$TMP/board" 'data-status="review"'
+has "board column"       "$TMP/board" 'data-status="todo"'
+# The panel section above turned review on for this board, which is why a card that is sitting in
+# review is on the page at all. The other status nobody has asked for stays away.
+has   "  ...including the panel that was turned on" "$TMP/board" 'data-status="review"'
+hasnt "  ...with review_ready still off"            "$TMP/board" 'data-status="review_ready"'
 has "board tagged for htmx" "$TMP/board" "data-board=\"$lab\""
 curl -sS "$base/board/?id=$gen" -o "$TMP/gen"
 hasnt "and not on the other board" "$TMP/gen" "project/?id=$new_id"
