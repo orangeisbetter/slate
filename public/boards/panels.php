@@ -30,18 +30,13 @@ page_start('Panels');
 <div class="page-wide mx-auto p-4">
     <h1 class="h4">Panels</h1>
     <p class="text-body-secondary"><?= h($b['name']) ?></p>
-    <form method="post" action="boards/save_panels.php">
-        <input type="hidden" name="id" value="<?= $id ?>">
-        <p class="small text-body-secondary">
-            Every status can be a column on this board. A column set to <strong>Never</strong> takes its
-            projects off the board without changing them: they keep their status, and they are still in
-            the list view.
-        </p>
-        <?php board_panel_rows($id, $modes, $counts); ?>
+    <form method="post" action="/boards/save_panels.php">
+          <input type="hidden" name="id" value="<?= $id ?>">
+          <?php board_panel_rows($id, $modes, $counts); ?>
         <?php // A right-aligned row rather than a .modal-footer, because there is no dialog here to
               // put a footer in. That is the only thing the page and the fragment disagree about. ?>
         <div class="d-flex justify-content-end gap-2 mt-3">
-            <a class="btn btn-outline-secondary" href="boards/">Cancel</a>
+            <a class="btn btn-outline-secondary" href="/boards/">Cancel</a>
             <button class="btn btn-primary">Save panels</button>
         </div>
     </form>

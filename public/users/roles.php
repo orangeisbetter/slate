@@ -26,13 +26,9 @@ foreach ((array)($_POST['roles'] ?? []) as $posted) {
 
 // Losing the last admin would leave nobody able to invite or promote anyone again, and
 // recovery needs SLATE_SETUP_KEY, which a plain install does not set.
-if (is_admin($target) && !in_array('admin', $wanted, true)) {
-    $admins = (int)q('SELECT COUNT(*) FROM user_roles ur JOIN roles r ON r.id=ur.role_id
-                      WHERE r.slug=?', ['admin'])->fetchColumn();
-    if ($admins <= 1) {
-        bad('This is the only admin. Promote someone else first.');
-    }
+if (is_admin($target) && !in_array('admin', $wanted, true) && admin_count() <= 1) {
+    bad('This is the only admin. Promote someone else first.');
 }
 
 set_roles($target, $wanted);
-go(base_url() . '/users/');
+go('/users/');

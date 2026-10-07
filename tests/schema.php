@@ -35,7 +35,7 @@ if (!in_array('roles', $tables, true) || !in_array('email', $columns('users'), t
 }
 
 echo "users columns\n";
-foreach (['id', 'name', 'email', 'password_hash'] as $column) {
+foreach (['id', 'name', 'email', 'password_hash', 'active'] as $column) {
     ok(in_array($column, $columns('users'), true), "users.$column");
 }
 

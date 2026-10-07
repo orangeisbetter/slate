@@ -37,7 +37,7 @@ if ($method === 'GET') {
         ?>
         <button type="button" class="w-100 text-start d-flex align-items-center gap-2 border rounded px-2 py-1 mb-1 bg-body<?= in_array((int)$oid, $chosen, true) ? ' d-none' : '' ?>"
                 data-picker-option data-value="<?= (int)$oid ?>"
-                hx-post="project/project_boards.php" hx-target="#boards-form" hx-swap="innerHTML"
+                hx-post="/project/project_boards.php" hx-target="#boards-form" hx-swap="innerHTML"
                 hx-include="#boards-form, #picker-boards-search" hx-vals='{"add":<?= (int)$oid ?>}'>
             <span class="text-truncate"><?= h($o['label']) ?></span>
             <?php if (!empty($o['sub'])): ?>
@@ -63,7 +63,7 @@ if ($drop = (int)($_POST['remove'] ?? 0)) {
 set_project_boards($id, $ids, $me);
 
 if (!isset($_SERVER['HTTP_HX_REQUEST'])) {
-    go(base_url() . '/project/?id=' . $id);
+    go('/project/?id=' . $id);
 }
 
 $chosen = project_board_ids($id);
@@ -76,14 +76,14 @@ $options = board_picker_options($q ?: null);
 <?php foreach ($chosen as $bid): $b = $all[$bid] ?? null; ?>
     <div class="d-flex align-items-center gap-2 border rounded bg-body-tertiary px-2 py-1 mb-1" data-picker-row data-value="<?= $bid ?>">
         <input type="hidden" name="boards[]" value="<?= $bid ?>">
-        <span class="text-truncate"><a class="link-quiet" href="board/?id=<?= $bid ?>"><?= h($b['label'] ?? 'Unknown') ?></a></span>
+        <span class="text-truncate"><a class="link-quiet" href="/board/?id=<?= $bid ?>"><?= h($b['label'] ?? 'Unknown') ?></a></span>
         <button type="button" class="btn-close ms-auto" aria-label="Remove <?= h($b['label'] ?? 'board') ?>"
-                hx-post="project/project_boards.php" hx-target="#boards-form" hx-swap="innerHTML"
+                hx-post="/project/project_boards.php" hx-target="#boards-form" hx-swap="innerHTML"
                 hx-include="closest form, #picker-boards-search" hx-vals='{"remove":<?= $bid ?>}'></button>
     </div>
 <?php endforeach ?>
 <?php if (!$chosen): ?>
-    <div class="small text-body-secondary mb-2">On no board. Projects off every board still show in the list view.</div>
+    <div class="small text-body-secondary mb-2">On no board.</div>
 <?php endif ?>
 <button type="button" class="btn btn-outline-primary btn-sm mt-2" data-bs-toggle="modal"
         data-bs-target="#picker-boards-modal">Add board</button>
@@ -91,7 +91,7 @@ $options = board_picker_options($q ?: null);
     <?php foreach ($options as $oid => $o): ?>
         <button type="button" class="w-100 text-start d-flex align-items-center gap-2 border rounded px-2 py-1 mb-1 bg-body<?= in_array((int)$oid, $chosen, true) ? ' d-none' : '' ?>"
                 data-picker-option data-value="<?= (int)$oid ?>"
-                hx-post="project/project_boards.php" hx-target="#boards-form" hx-swap="innerHTML"
+                hx-post="/project/project_boards.php" hx-target="#boards-form" hx-swap="innerHTML"
                 hx-include="#boards-form, #picker-boards-search" hx-vals='{"add":<?= (int)$oid ?>}'>
             <span class="text-truncate"><?= h($o['label']) ?></span>
             <?php if (!empty($o['sub'])): ?>

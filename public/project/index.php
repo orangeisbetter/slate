@@ -11,7 +11,7 @@ if (!$p) {
 	page_start('Not found');
 	?>
 	<div class="page-wide mx-auto p-4">
-		<p>Project not found. <a href="index.php">Back to the board</a></p>
+		<p>Project not found. <a href="/index.php">Back to the board</a></p>
 	</div>
 	<?php
 	page_end();
@@ -33,9 +33,9 @@ page_start($p['title']);
 	<div class="page-wide mx-auto p-3 p-md-4">
 		<nav aria-label="breadcrumb">
 			<ol class="breadcrumb">
-				<li class="breadcrumb-item"><a href="index.php">Dashboard</a></li>
+				<li class="breadcrumb-item"><a href="/index.php">Dashboard</a></li>
 				<?php foreach ($ancestors as $ancestor): ?>
-					<li class="breadcrumb-item"><a href="project/?id=<?= $ancestor['id'] ?>"><?php ref_badge((int)$ancestor['id']) ?><?= h($ancestor['title']) ?></a></li>
+					<li class="breadcrumb-item"><a href="/project/?id=<?= $ancestor['id'] ?>"><?php ref_badge((int)$ancestor['id']) ?><?= h($ancestor['title']) ?></a></li>
 				<?php endforeach ?>
 				<li class="breadcrumb-item active"><?= h($p['title']) ?></li>
 			</ol>
@@ -46,7 +46,7 @@ page_start($p['title']);
 		</div>
 		<div class="row mb-3">
 			<div class="col-auto">
-				<select class="form-select" name="status" hx-patch="project/update_status.php" hx-swap="none" hx-vals='{"id": <?= $id ?>}'>
+				<select class="form-select" name="status" hx-patch="/project/update_status.php" hx-swap="none" hx-vals='{"id": <?= $id ?>}'>
 					<?php // PANEL_ORDER, not LABELS: this is the order work moves through, and LABELS has
 					       // review_ready appended at the end, which put "Ready for review" below
 					       // "Cancelled" and split the two review stages apart. The same list the board
@@ -61,7 +61,7 @@ page_start($p['title']);
 			<div class="col-lg-8">
 				<div class="card mb-2">
 					<div class="card-body">
-						<?php project_form($p, $id, [], 'project/update.php') ?>
+						<?php project_form($p, $id, [], '/project/update.php') ?>
 					</div>
 				</div>
 				<p class="text-body-secondary small mb-4">Created <?= dt($p['created_at']) ?>. Last updated <?= dt($p['updated_at']) ?>.</p>
@@ -72,7 +72,7 @@ page_start($p['title']);
 							<div class="list-group-item text-body-secondary small">No subprojects yet.</div>
 						<?php endif ?>
 						<?php foreach ($subprojects as $sub): ?>
-							<a class="list-group-item list-group-item-action d-flex align-items-center gap-2" href="project/?id=<?= $sub['id'] ?>">
+							<a class="list-group-item list-group-item-action d-flex align-items-center gap-2" href="/project/?id=<?= $sub['id'] ?>">
 								<?php type_badge($sub['type']) ?>
 								<?php ref_badge((int)$sub['id']) ?>
 								<?= h($sub['title']) ?>
@@ -84,7 +84,7 @@ page_start($p['title']);
 						<?php endforeach ?>
 					</div>
 					<div class="card-body">
-						<form class="input-group" method="post" action="project/add.php">
+						<form class="input-group" method="post" action="/project/add.php">
 							<input class="form-control" name="title" required placeholder="New subproject title">
 							<input type="hidden" name="parent_id" value="<?= $id ?>">
 							<button class="btn btn-outline-primary">Add subproject</button>
@@ -97,7 +97,7 @@ page_start($p['title']);
 						<div id="cms">
 							<?php render_comments($id) ?>
 						</div>
-						<form class="mt-3" method="post" action="project/comment.php" hx-post="project/comment.php" hx-target="#cms" hx-on::after-request="this.reset()">
+						<form class="mt-3" method="post" action="/project/comment.php" hx-post="/project/comment.php" hx-target="#cms" hx-on::after-request="this.reset()">
 							<input type="hidden" name="id" value="<?= $id ?>">
 							<textarea class="form-control mb-2" name="body" rows="3" required placeholder="Write a comment"></textarea>
 							<button class="btn btn-outline-primary">Add comment</button>
@@ -128,7 +128,7 @@ page_start($p['title']);
 							<input type="hidden" name="as[]" value="<?= $uid ?>">
 						<span class="text-truncate"><?php user_link($uid, $u['label'] ?? 'Unknown') ?></span>
 							<button type="button" class="btn-close ms-auto" aria-label="Remove <?= h($u['label'] ?? 'person') ?>"
-									hx-post="project/assign.php" hx-target="#people-form" hx-swap="innerHTML"
+									hx-post="/project/assign.php" hx-target="#people-form" hx-swap="innerHTML"
 									hx-include="closest form, #picker-people-search" hx-vals='{"remove":<?= $uid ?>}'></button>
 						</div>
 					<?php endforeach ?>
@@ -150,14 +150,14 @@ page_start($p['title']);
 								     // it on every open, and that is Bootstrap's own event, so it needs no glue. ?>
 								<input type="search" id="picker-people-search" name="q" autocomplete="off"
 									   class="form-control mb-2" placeholder="Search people" aria-label="Search people"
-									   hx-get="project/assign.php" hx-target="#picker-people-options" hx-swap="innerHTML"
+									   hx-get="/project/assign.php" hx-target="#picker-people-options" hx-swap="innerHTML"
 									   hx-trigger="input changed delay:250ms, search, shown.bs.modal from:#picker-people-modal"
 									   hx-vals='{"id":<?= $id ?>,"mode":"options"}'>
 								<div class="picker-list" id="picker-people-options">
 									<?php foreach ($people_options as $oid => $o): ?>
 										<button type="button" class="w-100 text-start d-flex align-items-center gap-2 border rounded px-2 py-1 mb-1 bg-body<?= in_array((int)$oid, $assigned, true) ? ' d-none' : '' ?>"
 												data-picker-option data-value="<?= (int)$oid ?>"
-												hx-post="project/assign.php" hx-target="#people-form" hx-swap="innerHTML"
+												hx-post="/project/assign.php" hx-target="#people-form" hx-swap="innerHTML"
 												hx-include="#people-form, #picker-people-search" hx-vals='{"add":<?= (int)$oid ?>}'>
 											<span class="text-truncate"><?= h($o['label']) ?></span>
 											<?php if (!empty($o['sub'])): ?>
@@ -180,14 +180,14 @@ page_start($p['title']);
 					<?php foreach ($board_ids as $bid): $b = $board_options[$bid] ?? null; ?>
 						<div class="d-flex align-items-center gap-2 border rounded bg-body-tertiary px-2 py-1 mb-1" data-picker-row data-value="<?= $bid ?>">
 							<input type="hidden" name="boards[]" value="<?= $bid ?>">
-							<span class="text-truncate"><a class="link-quiet" href="board/?id=<?= $bid ?>"><?= h($b['label'] ?? 'Unknown') ?></a></span>
+							<span class="text-truncate"><a class="link-quiet" href="/board/?id=<?= $bid ?>"><?= h($b['label'] ?? 'Unknown') ?></a></span>
 							<button type="button" class="btn-close ms-auto" aria-label="Remove <?= h($b['label'] ?? 'board') ?>"
-									hx-post="project/project_boards.php" hx-target="#boards-form" hx-swap="innerHTML"
+									hx-post="/project/project_boards.php" hx-target="#boards-form" hx-swap="innerHTML"
 									hx-include="closest form, #picker-boards-search" hx-vals='{"remove":<?= $bid ?>}'></button>
 						</div>
 					<?php endforeach ?>
 					<?php if (!$board_ids): ?>
-						<div class="small text-body-secondary mb-2">On no board. Projects off every board still show in the list view.</div>
+						<div class="small text-body-secondary mb-2">On no board.</div>
 					<?php endif ?>
 					<button type="button" class="btn btn-outline-primary btn-sm mt-2" data-bs-toggle="modal" data-bs-target="#picker-boards-modal">Add board</button>
 				</form>
@@ -204,14 +204,14 @@ page_start($p['title']);
 								     // it on every open, and that is Bootstrap's own event, so it needs no glue. ?>
 								<input type="search" id="picker-boards-search" name="q" autocomplete="off"
 									   class="form-control mb-2" placeholder="Search boards" aria-label="Search boards"
-									   hx-get="project/project_boards.php" hx-target="#picker-boards-options" hx-swap="innerHTML"
+									   hx-get="/project/project_boards.php" hx-target="#picker-boards-options" hx-swap="innerHTML"
 									   hx-trigger="input changed delay:250ms, search, shown.bs.modal from:#picker-boards-modal"
 									   hx-vals='{"id":<?= $id ?>,"mode":"options"}'>
 								<div class="picker-list" id="picker-boards-options">
 									<?php foreach ($board_options as $oid => $o): ?>
 										<button type="button" class="w-100 text-start d-flex align-items-center gap-2 border rounded px-2 py-1 mb-1 bg-body<?= in_array((int)$oid, $board_ids, true) ? ' d-none' : '' ?>"
 												data-picker-option data-value="<?= (int)$oid ?>"
-												hx-post="project/project_boards.php" hx-target="#boards-form" hx-swap="innerHTML"
+												hx-post="/project/project_boards.php" hx-target="#boards-form" hx-swap="innerHTML"
 												hx-include="#boards-form, #picker-boards-search" hx-vals='{"add":<?= (int)$oid ?>}'>
 											<span class="text-truncate"><?= h($o['label']) ?></span>
 											<?php if (!empty($o['sub'])): ?>
@@ -240,7 +240,7 @@ page_start($p['title']);
 					</ul>
 				</div>
 				<?php if (is_admin($me)): ?>
-					<form method="post" action="project/delete.php" onsubmit="return confirm('Delete this project, its subprojects, and all their comments?')">
+					<form method="post" action="/project/delete.php" onsubmit="return confirm('Delete this project, its subprojects, and all their comments?')">
 						<input type="hidden" name="id" value="<?= $id ?>">
 						<button class="btn btn-outline-danger">Delete project</button>
 					</form>

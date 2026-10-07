@@ -72,7 +72,7 @@ page_start('Dashboard');
                 <?php foreach ($mine as $project): ?>
                     <tr>
                         <td>
-<a class="fw-medium text-decoration-none" href="project/?id=<?= (int)$project['id'] ?>">
+<a class="fw-medium text-decoration-none" href="/project/?id=<?= (int)$project['id'] ?>">
                                   <?php ref_badge((int)$project['id']) ?><?= h($project['title']) ?>
                               </a>
                         </td>

@@ -10,8 +10,15 @@ start_session();
 /** The signed-in user id, or a redirect to sign in (setup on first run). */
 function require_login(): int {
     $uid = (int)($_SESSION['uid'] ?? 0);
-    if ($uid && user_exists($uid)) {
+    if ($uid && user_exists($uid) && user_is_active($uid)) {
         return $uid;
+    }
+    // A session whose account has since been deleted or deactivated is thrown away rather than
+    // just sent back to the sign-in form. Redirecting alone would leave the cookie in place, and
+    // re-activating the account would then hand the old session straight back its access without
+    // anyone signing in again -- which is the one thing deactivating an account must not do.
+    if ($uid) {
+        logout_user();
     }
     if (isset($_SERVER['HTTP_HX_REQUEST'])) {
         http_response_code(401);
@@ -20,11 +27,11 @@ function require_login(): int {
     // Only ask for the key before the first account exists; after that this link is
     // how a self-hosted operator can mint a replacement administrator.
     if (!credentials_count()) {
-        go(base_url() . '/setup/');
+        go('/setup/');
     }
     // Remember where they were headed so sign-in can return them there.
     $next = $_SERVER['REQUEST_URI'] ?? '';
-    go(base_url() . '/login/' . ($next ? '?next=' . rawurlencode($next) : ''));
+    go('/login/' . ($next ? '?next=' . rawurlencode($next) : ''));
 }
 
 /** As require_login, but for admin-only endpoints. */

@@ -14,13 +14,16 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 
 $q = trim($_GET['q'] ?? '');
 
+
 if (isset($_SERVER['HTTP_HX_REQUEST'])) {
-    search_menu($q);
+    $hits = search_projects($q, SEARCH_MENU_LIMIT);
+    search_menu($q, $hits);
     exit;
+} else {
+    $hits = search_projects($q);
 }
 
 // Everything, not the handful the menu offers, so the page is the honest answer to "what matches".
-$hits = search_projects($q);
 page_start($q === '' ? 'Search' : 'Search: ' . $q);
 ?>
 <div class="page-wide mx-auto p-3 p-md-4">
@@ -39,7 +42,7 @@ page_start($q === '' ? 'Search' : 'Search: ' . $q);
                 <?php foreach ($hits as $p): ?>
                     <tr>
                         <td><?php ref_badge((int)$p['id']) ?></td>
-                        <td><a href="project/?id=<?= (int)$p['id'] ?>"><?= h($p['title']) ?></a></td>
+                        <td><a href="/project/?id=<?= (int)$p['id'] ?>"><?= h($p['title']) ?></a></td>
                         <td><?php type_badge($p['type']) ?></td>
                         <td><span class="badge text-bg-<?= TONE[$p['status']] ?>"><?= h(LABELS[$p['status']]) ?></span></td>
                     </tr>

@@ -24,33 +24,31 @@ const SEARCH_MENU_LIMIT = 8;
 function search_box(string $q = ''): void {
     ?>
     <div class="search-wrap">
-        <form method="get" action="search.php" role="search">
+        <form method="get" action="/search.php" role="search">
             <input type="search" name="q" value="<?= h($q) ?>" class="form-control" autocomplete="off"
                    placeholder="Search projects" aria-label="Search projects"
-                   hx-get="search.php" hx-target="#search-menu" hx-swap="outerHTML"
+                   hx-get="/search.php" hx-target="#search-menu" hx-swap="innerHTML"
                    hx-trigger="input changed delay:250ms">
         </form>
-        <?php search_menu($q); ?>
+        <div id="search-menu"></div>
     </div>
     <?php
 }
 
 /**
- * Just the menu, which is what search.php returns to htmx and what search_box embeds on a first
- * paint. Visible or not is the server's call: an empty query renders the menu hidden rather than
- * leaving an empty panel hanging under the navbar.
- */
-function search_menu(string $q): void {
-    $q = trim($q);
-    $hits = search_projects($q, SEARCH_MENU_LIMIT);
-    ?>
-    <div id="search-menu" class="dropdown-menu search-menu<?= $q === '' ? ' d-none' : '' ?>">
+   * Just the menu, which is what search.php returns to htmx; the box's first paint is an empty
+   * #search-menu slot those responses slide into. Visible or not is the server's call: an empty
+   * query renders the menu hidden rather than leaving an empty panel hanging under the navbar.
+   */
+  function search_menu(string $q, array $hits): void {
+      ?>
+      <div class="dropdown-menu search-menu<?= $q === '' ? ' d-none' : '' ?>">
         <?php if ($q === ''): ?>
         <?php elseif (!$hits): ?>
             <div class="small text-body-secondary px-3 py-2">Nothing matches &ldquo;<?= h($q) ?>&rdquo;.</div>
         <?php else: ?>
             <?php foreach ($hits as $p): ?>
-                <a class="dropdown-item d-flex align-items-center gap-2" href="project/?id=<?= (int)$p['id'] ?>">
+                <a class="dropdown-item d-flex align-items-center gap-2" href="/project/?id=<?= (int)$p['id'] ?>">
                     <?php ref_badge((int)$p['id']) ?>
                     <span class="text-truncate"><?= h($p['title']) ?></span>
                     <?php type_badge($p['type']) ?>
@@ -58,7 +56,7 @@ function search_menu(string $q): void {
             <?php endforeach ?>
             <?php if (count($hits) === SEARCH_MENU_LIMIT): ?>
                 <div class="dropdown-divider"></div>
-                <a class="dropdown-item small text-body-secondary" href="search.php?q=<?= h(rawurlencode($q)) ?>">
+                <a class="dropdown-item small text-body-secondary" href="/search.php?q=<?= h(rawurlencode($q)) ?>">
                     See all matches
                 </a>
             <?php endif ?>
@@ -82,24 +80,19 @@ function page_start(string $title, bool $nav = true): void {
     <head>
         <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
         <title><?= h($title) ?></title>
-        <!-- One line decides what every relative URL below is relative to: the app's root. A page
-             lives in its own directory (/board/, /login/) or at the root, and neither the stylesheet,
-             the script, a form's action nor an hx-post has to climb back out with ../ to match.
-             The one href="#" below leans on this too: it now means the app root, not a bare page. -->
-        <base href="<?= h(base_url()) ?>/">
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-        <link rel="stylesheet" href="assets/style.css">
+        <link rel="stylesheet" href="/assets/style.css">
         <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.4/dist/htmx.min.js"></script>
         <!-- For the Boards dropdown and the picker's add dialog; the rest is CSS and htmx. -->
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" defer></script>
         <!-- defer: the picker and the board need the markup above them, and htmx above that. -->
-        <script src="assets/app.js" defer></script>
+        <script src="/assets/app.js" defer></script>
     </head>
     <body class="bg-body-tertiary">
         <?php if (!$nav) return; ?>
         <nav class="navbar navbar-expand-lg bg-body border-bottom">
             <div class="container-fluid gap-3">
-                <a class="navbar-brand fw-semibold" href="index.php">Slate</a>
+                <a class="navbar-brand fw-semibold" href="/index.php">Slate</a>
                 <?php if ($me): ?>
                     <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
                             data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false"
@@ -111,16 +104,16 @@ function page_start(string $title, bool $nav = true): void {
                      to reveal them and whose only real destination is the sign-in page. -->
                 <div class="collapse navbar-collapse<?= $me ? '' : ' show' ?>" id="navbar">
                     <ul class="navbar-nav">
-                        <li><a class="nav-link" href="index.php">Dashboard</a></li>
+                        <li><a class="nav-link" href="/index.php">Dashboard</a></li>
                         <li class="nav-item dropdown">
                             <!-- href is the real destination, so the menu still works without JS. -->
-                            <a class="nav-link dropdown-toggle" href="boards/" role="button"
+                            <a class="nav-link dropdown-toggle" href="/boards/" role="button"
                                data-bs-toggle="dropdown" aria-expanded="false">Boards</a>
                             <ul class="dropdown-menu">
-                                <li><a class="dropdown-item" href="boards/">All boards</a></li>
+                                <li><a class="dropdown-item" href="/boards/">All boards</a></li>
                                 <?php foreach (boards() as $board): ?>
                                     <li>
-                                        <a class="dropdown-item" href="board/?id=<?= (int)$board['id'] ?>">
+                                        <a class="dropdown-item" href="/board/?id=<?= (int)$board['id'] ?>">
                                             <?= h($board['name']) ?>
                                             <span class="badge text-bg-secondary ms-1"><?= (int)$board['project_count'] ?></span>
                                         </a>
@@ -128,17 +121,16 @@ function page_start(string $title, bool $nav = true): void {
                                 <?php endforeach ?>
                             </ul>
                         </li>
-                        <li><a class="nav-link" href="list/">List</a></li>
+                        <li><a class="nav-link" href="/list/">List</a></li>
                         <?php if ($me): ?>
-                            <li><a class="nav-link" href="users/">Users</a></li>
+                            <li><a class="nav-link" href="/users/">Users</a></li>
                         <?php endif ?>
                     </ul>
                     <?php if ($me): ?>
                         <ul class="navbar-nav ms-auto me-3">
                             <li class="nav-item dropdown">
-                                <!-- No page of its own, so without JS it lands on the dashboard
-                                     rather than a bare "#" that <base> would resolve to the app root. -->
-                                <a class="nav-link dropdown-toggle" href="./" role="button"
+                                <!-- href is the page itself, so the menu still works without JS. -->
+                                <a class="nav-link dropdown-toggle" href="/account/" role="button"
                                    data-bs-toggle="dropdown" aria-expanded="false">Account</a>
                                 <ul class="dropdown-menu dropdown-menu-end">
                                     <li>
@@ -148,7 +140,16 @@ function page_start(string $title, bool $nav = true): void {
                                     </li>
                                     <li><hr class="dropdown-divider"></li>
                                     <li>
-                                        <form method="post" action="logout.php">
+                                        <a class="dropdown-item" href="/account/">Your account</a>
+                                    </li>
+                                    <?php if (is_admin($me)): ?>
+                                        <li>
+                                            <a class="dropdown-item" href="/users/">Manage users</a>
+                                        </li>
+                                    <?php endif ?>
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li>
+                                        <form method="post" action="/logout.php">
                                             <button class="dropdown-item" type="submit">Sign out</button>
                                         </form>
                                     </li>
@@ -156,9 +157,9 @@ function page_start(string $title, bool $nav = true): void {
                             </li>
                         </ul>
                           <?php search_box(); ?>
-                          <a class="btn btn-primary" href="new/">New project</a>
+                          <a class="btn btn-primary" href="/new/">New project</a>
                     <?php else: ?>
-                        <a class="btn btn-outline-primary ms-auto" href="login/">Sign in</a>
+                        <a class="btn btn-outline-primary ms-auto" href="/login/">Sign in</a>
                     <?php endif ?>
                 </div>
             </div>
@@ -178,16 +179,13 @@ function page_end(): void {
              as the window and this collects the leftover height above itself. On a page too full to
              have any, it collapses to nothing and the gap above the rule is the content's own bottom
              padding, which every page already has. -->
-        <footer class="border-top mt-auto">
+        <!--<footer class="border-top mt-auto">
             <div class="page-wide mx-auto px-3 px-md-4 py-3 d-flex flex-wrap align-items-center gap-3 small text-body-secondary">
                 <span class="fw-medium text-body">Slate</span>
                 <span>a small project tracker</span>
-                <!-- The whole of the privacy story, and it is short: nothing is collected or sent
-                     anywhere by the app, and the only outside party involved is the CDN the assets
-                     come from, which sees the request for them like any other. -->
                 <span class="ms-auto">No tracking. Assets load from a CDN.</span>
             </div>
-        </footer>
+        </footer>-->
     <?php endif ?>
     </body>
     </html>
@@ -217,7 +215,7 @@ function ref_badge(int $id): void {
 // the href here is the only thing that changes.
 function user_link(int $id, string $name): void {
     ?>
-    <a class="link-quiet" href="users/#user-<?= $id ?>"><?= h($name) ?></a>
+    <a class="link-quiet" href="/users/#user-<?= $id ?>"><?= h($name) ?></a>
     <?php
 }
 
@@ -233,7 +231,7 @@ function board_labels(array $board_ids): void {
     }
     foreach ($board_ids as $id) {
         ?>
-        <a class="badge text-bg-light border text-body me-1" href="board/?id=<?= $id ?>"><?= h($names[$id] ?? 'Unknown') ?></a>
+        <a class="badge text-bg-light border text-body me-1" href="/board/?id=<?= $id ?>"><?= h($names[$id] ?? 'Unknown') ?></a>
         <?php
     }
 }
@@ -281,21 +279,27 @@ function filter_options(array $options, ?string $q): array {
     return array_filter($options, fn($o) => str_contains($o['search'], $q));
 }
 
-// One project card. $ctx carries the lookups render_board built once for the whole page, so
-// this stays pure formatting. $top_level is false when the card sits inside a subproject
-// wrapper, because there the wrapper is the single drag handle for the whole group.
-function board_card(array $project, string $status, array $ctx, bool $top_level = true): void {
+// One project card. The link is the card, so all of it is clickable, and it is the one drag handle.
+// A subproject is the same card with its parent named on it — there is no wrapper and no second card,
+// which is what lets the parent be named here without the card needing a link inside a link.
+// $ctx carries the lookups render_board built once for the whole page, so this stays pure formatting.
+function board_card(array $project, string $status, array $ctx): void {
     $id = (int)$project['id'];
     $today = gmdate('Y-m-d');
     $comments = $ctx['comments'][$id] ?? 0;
     $overdue = $project['due_date'] && $project['due_date'] < $today && $status !== 'done';
-    // draggable="false" matters on the nested card: an anchor with an href is draggable by
-    // default, and a link drag would carry the URL instead of the project id.
-    $handle = $top_level ? ' draggable="true" data-id="' . $id . '"' : ' draggable="false"';
+    $parent_id = (int)($project['parent_id'] ?? 0);
     ?>
-    <a class="card t-<?= h($project['type']) ?> text-body text-decoration-none <?= $top_level ? 'shadow-sm' : '' ?>"
-       href="project/?id=<?= $id ?>"<?= $handle ?>>
+    <a class="card<?= $parent_id ? ' subproject' : '' ?> t-<?= h($project['type']) ?> text-body text-decoration-none shadow-sm"
+       href="/project/?id=<?= $id ?>" draggable="true" data-id="<?= $id ?>">
         <div class="card-body p-2">
+            <?php if ($parent_id): ?>
+                <?php // Named, not linked. This was a link once, and it made the card two targets that
+                      // each covered part of it — while the part covering the badges looked nothing
+                      // like a link, which was the confusing half. One target per card, and it is
+                      // whichever project the card is. ?>
+                <div class="small text-body-secondary mb-1">Subproject of&nbsp;<?php ref_badge($parent_id) ?><?= h($ctx['titles'][$parent_id] ?? '') ?></div>
+            <?php endif ?>
             <div class="fw-medium"><?php ref_badge($id) ?><?= h($project['title']) ?></div>
             <div class="d-flex align-items-center gap-2 small text-body-secondary mt-1">
                 <?php type_badge($project['type']); ?>
@@ -319,24 +323,6 @@ function board_card(array $project, string $status, array $ctx, bool $top_level 
             </div>
         </div>
     </a>
-    <?php
-}
-
-// A subproject, contained in a card naming its parent. The wrapper rather than the inner card
-// carries data-id and draggable, so the whole thing picks up and moves as one object.
-function board_card_wrapper(array $project, string $status, array $ctx): void {
-    $id = (int)$project['id'];
-    $parent_id = (int)$project['parent_id'];
-    $parent = $ctx['titles'][$parent_id] ?? '';
-    ?>
-    <div class="card subproject shadow-sm" draggable="true" data-id="<?= $id ?>">
-        <div class="card-header py-1 px-2 small fw-normal text-body-secondary">
-            Subproject of&nbsp;<a href="project/?id=<?= $parent_id ?>"><?php ref_badge($parent_id) ?><?= h($parent) ?></a>
-        </div>
-        <div class="card-body p-1">
-            <?php board_card($project, $status, $ctx, false) ?>
-        </div>
-    </div>
     <?php
 }
 
@@ -402,14 +388,11 @@ function render_board(?int $board_id = null): void {
                 </div>
                 <div class="card-body d-flex flex-column gap-2">
                     <?php foreach ($items as $project):
-                        // A subproject keeps its own column, status and drag behaviour. It is only
-                        // wrapped so the reader can see at a glance which project it belongs to,
-                        // which may well be a parent filed on another board or left off this one.
-                        if ($project['parent_id']) {
-                            board_card_wrapper($project, $status, $ctx);
-                        } else {
-                            board_card($project, $status, $ctx);
-                        }
+                        // Same card either way, keeping its own column, status and drag behaviour. A
+                        // subproject only adds a line naming its parent, which may well be filed on
+                        // another board or left off this one, so board_card says so rather than
+                        // needing a second kind of card to say it in.
+                        board_card($project, $status, $ctx);
                     endforeach ?>
                     <?php if (!$items): ?>
                         <div class="text-center text-body-secondary small py-4">Drop a project here</div>
@@ -524,15 +507,14 @@ foreach ($comments as $comment) {
     }
 }
 
-// Create/edit form. $action is the script that receives it, named from the app root because of
-// the <base> every page carries: 'new/add.php' from the create page, 'project/update.php' from the
+// Create/edit form. $action is the script that receives it, named from the app root because every
+// page lives at its own depth: '/new/add.php' from the create page, '/project/update.php' from the
 // project page, which is what makes adding and updating two operations with two endpoints.
 // Assignees are only chosen here when creating; on the project page they have their own panel.
 // $boards only matters when creating: an existing project's boards are edited from its own
 // page, in the Boards panel, so the edit form leaves them alone.
-function project_form(array $project, ?int $id, array $boards = [], string $action = 'new/add.php'): void {
-    $default_panels = h(implode(', ', array_map(fn($status) => LABELS[$status], DEFAULT_BOARD_PANELS)));
-    // The create form's two pickers. Nothing here is saved until the form is posted, so there is
+  function project_form(array $project, ?int $id, array $boards = [], string $action = '/new/add.php'): void {
+      // The create form's two pickers. Nothing here is saved until the form is posted, so there is
     // no row for the server to send back: this is the one place a row is built in the browser.
     // They are marked data-draft-picker and the Create button submits them like any other field.
     // See app.js.
@@ -573,9 +555,8 @@ function project_form(array $project, ?int $id, array $boards = [], string $acti
     <div class="col-6 col-md-4">
         <label class="form-label" for="due">Due date</label>
         <input type="date" class="form-control" id="due" name="due_date" value="<?= h($project['due_date']) ?>">
-    </div>
-    <div class="col-12 form-text mt-1">A board draws one column per status it has a panel for, and a board nobody has changed draws <?= $default_panels ?>. An admin sets the rest per board. Whatever a board does not draw is still in the list view.</div>
-<?php foreach ($draft as $key => $d): $taken = array_map('intval', $d['chosen']); ?>
+      </div>
+  <?php foreach ($draft as $key => $d): $taken = array_map('intval', $d['chosen']); ?>
     <div class="col-12" data-draft-picker="<?= h($key) ?>" data-draft-field="<?= h($d['field']) ?>">
         <div class="form-label"><?= h($d['label']) ?></div>
         <div data-draft-rows>

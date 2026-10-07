@@ -61,7 +61,7 @@ serve() {   # serve <port> <docroot> [env assignment...]
 echo "== migrate =="
 mkdir -p "$TMP/data"
 cp -r "$ROOT/src" "$ROOT/public" "$ROOT/db" "$ROOT/bin" "$TMP/"
-is "fresh migrate applies every file" "4" "$(cd "$TMP" && php bin/migrate.php | grep -cE '^ *\+ ')"
+is "fresh migrate applies every file" "6" "$(cd "$TMP" && php bin/migrate.php | grep -cE '^ *\+ ')"
 is "re-running applies nothing" "0" "$(cd "$TMP" && php bin/migrate.php | grep -cE '^ *\+ ')"
 php "$ROOT/tests/schema.php" "$TMP/data/board.db" >"$TMP/schema.out" 2>&1
 is "schema check passes against a fresh database" "0" "$?"
@@ -96,7 +96,7 @@ is "a malformed address is refused" "302" \
   "$(post /setup/accept_setup.php 'name=A&email=nope&password=longenough1&password2=longenough1')"
 is "setup creates the admin" "302" \
   "$(post /setup/accept_setup.php 'name=Ada Admin&email=ada@example.com&password=correcthorse1&password2=correcthorse1')"
-is "  ...landing on the board" "../index.php" "$(loc)"
+is "  ...landing on the board" "/index.php" "$(loc)"
 is "the account has both roles" "admin,member" \
   "$(sq "select group_concat(r.slug) from roles r join user_roles ur on ur.role_id=r.id where ur.user_id=1")"
 is "the password is hashed, not stored" "1" \
@@ -107,7 +107,7 @@ is "board loads when signed in" "200" "$(get /index.php)"
 has "  ...showing who you are" "Ada Admin (admin)"
 hasnt "  ...and no impersonation switcher" "Acting as"
 is "setup page turns away a signed-in visitor" "302" "$(get /setup/)"
-is "  ...to the board" "../index.php" "$(loc)"
+is "  ...to the board" "/index.php" "$(loc)"
 
 echo "== sign out =="
 is "logout redirects" "302" "$(post /logout.php '')"
@@ -151,7 +151,7 @@ php -r '$d=new PDO("sqlite:'$TMP'/data/board.db"); $d->exec("delete from login_a
 echo "== sign in =="
 is "the right password is accepted" "302" \
   "$(post /login/login.php 'email=ada@example.com&password=correcthorse1')"
-is "  ...to the board" "../index.php" "$(loc)"
+is "  ...to the board" "/index.php" "$(loc)"
 get /index.php >/dev/null
 has "the board greets the admin" "Ada Admin (admin)"
 is "failures were cleared" "0" "$(sq 'select count(*) from login_attempts')"
@@ -171,7 +171,7 @@ get /boards/ >/dev/null
 hasnt "  ...and nothing is marked active" 'dropdown-item active'
 get /board/?id=1 >/dev/null
 hasnt "  ...on a board page either" 'dropdown-item active'
-has "  ...while every board still links to its page" 'href="board/?id=1"'
+has "  ...while every board still links to its page" 'href="/board/?id=1"'
 
 echo "== the navbar collapses and the account menu =="
 get /index.php >/dev/null
@@ -221,7 +221,7 @@ get "/${short_url#../}" >/dev/null
 has "  ...with the length complaint" "at least 10 characters"
 is "an invite is accepted" "302" \
   "$(post /invite/accept_invite.php "token=$token&name=Grace Hopper&password=hopperpassword1&password2=hopperpassword1")"
-is "  ...signing the new user in" "../index.php" "$(loc)"
+is "  ...signing the new user in" "/index.php" "$(loc)"
 grace_id="$(sq "select id from users where email='grace@example.com'")"
 is "the new user is a member" "member" \
   "$(sq "select group_concat(r.slug) from roles r join user_roles ur on ur.role_id=r.id where ur.user_id=$grace_id")"
@@ -342,7 +342,7 @@ is "both roles can be restored" "302" "$(post /users/roles.php "user_id=$grace_i
 echo "== the promoted member sees the admin tools =="
 rm -f "$JAR"
 post /login/login.php 'email=grace@example.com&password=hopperpassword1' >/dev/null
-is "sign-in as the promoted user works" "../index.php" "$(loc)"
+is "sign-in as the promoted user works" "/index.php" "$(loc)"
 get /users/ >/dev/null
 has "  ...the invite form" "Invite someone"
 has "  ...and their new badge" "Grace Hopper (admin)"
@@ -355,6 +355,185 @@ is "the revoked link is dead" "200" "$(get "/invite/?token=$token2")"
 has "  ...and says so" "Invitation not valid"
 is "it is no longer listed as pending" "0" \
   "$(sq "select count(*) from invites where token='$token2' and accepted_at is null")"
+
+echo "== the account page =="
+# get_as/post_as take a jar of their own, for the sections below that need two identities signed in
+# at the same time. A copy of the current jar will not do: signing in regenerates the session id, so
+# the copy and the original would be fighting over one session and the loser would be signed out.
+get_as()  { curl -sS -o "$BODY" -D "$HDR" -w '%{http_code}' -c "$1" -b "$1" "$BASE$2"; }
+post_as() { curl -sS -o "$BODY" -D "$HDR" -w '%{http_code}' -c "$1" -b "$1" \
+                -X POST --data "$3" "$BASE$2"; }
+# The account endpoints answer with a redirect carrying the message, so the page it lands on is what
+# gets read -- asserting on the query string would only be asserting this file back at itself.
+follow() { get "$(loc)" >/dev/null; }
+grace_jar="$TMP/grace-cookies.txt"
+
+get /account/ >/dev/null
+finished "the account page finishes"
+has "it says whose account it is" "Your account"
+has "  ...with the name" "Grace Hopper"
+has "  ...a form for the name" 'name="name"'
+has "  ...and the address it signs in with, read-only" 'readonly'
+
+echo "== the account tabs =="
+# The panes are switched with :target and :has() in public/assets/style.css, so every pane is in the
+# one response and a tab is a fragment link. These checks can only see the markup and the stylesheet,
+# not what a browser computes from them -- tests/browser-tabs.sh drives headless Chromium for that --
+# so what is asserted here is that the hooks the CSS needs are present and the ones it must not rely
+# on are absent.
+get /account/ >/dev/null
+for t in profile password access; do
+  has "the $t pane is in the document" "id=\"tab-$t\""
+    has "  ...behind a bare fragment link" "href=\"#tab-$t\""
+done
+has "  ...marked up as navigation" 'aria-label="Account sections"'
+hasnt "  ...with no tab state left to the server, which cannot see a fragment" '?tab='
+hasnt "  ...and no claim to be a tablist it cannot drive from the keyboard" 'role="tablist"'
+hasnt "  ...nor Bootstrap's script tab component, which only the navbar's dropdowns use" 'data-bs-toggle="tab"'
+# What the stylesheet then makes of that markup is checked for real, by a browser, in
+# tests/browser-tabs.sh. Asserting the CSS text here would only prove it is spelled as expected.
+
+has "the password pane holds the password form" 'name="current"'
+has "the access pane says what the account may do" "What this account may do"
+has "  ...the roles it holds" ">Roles<"
+has "  ...and the status it is in" ">Status<"
+# A pane id that collides with a field id makes :target ambiguous and the HTML invalid, which is how
+# the password pane first shipped: id="password" on the pane and on the new-password input.
+is "no id appears twice in the account page" "" "$(php -r '
+  preg_match_all("/id=\"([^\"]+)\"/", file_get_contents($argv[1]), $m);
+  echo implode(",", array_diff_assoc($m[1], array_unique($m[1])));
+' "$BODY")"
+
+# Each form redirects back to the tab it sits on, so a save lands where the reader was. Both of these
+# are the refused paths, which change nothing, so the checks after them still see the old values.
+post /account/change_password.php 'current=nopenopenope&password=hopperpassword2&password2=hopperpassword2' >/dev/null
+is "a refused password change stays on the password tab" \
+  "/account/?error=That%20is%20not%20your%20current%20password#tab-password" "$(loc)"
+post /account/update_name.php 'name=' >/dev/null
+is "a refused name change stays on the profile tab" \
+  "/account/?error=A%20name%20is%20needed#tab-profile" "$(loc)"
+follow
+has "  ...landing on the tab with a reason" "A name is needed"
+is "  ...without changing the row" "Grace Hopper" "$(sq "select name from users where id=$grace_id")"
+
+post /account/update_name.php 'name=Grace H. Hopper' >/dev/null
+is "a name save returns to the profile tab" "/account/?saved=Name%20saved#tab-profile" "$(loc)"
+follow
+has "  ...saying so" "Name saved"
+has "  ...showing the new name" "Grace H. Hopper"
+hasnt "  ...and not the old one" ">Grace Hopper<"
+has "  ...including in the navbar" "Grace H. Hopper (admin)"
+
+post /account/change_password.php 'current=nopenopenope&password=hopperpassword2&password2=hopperpassword2' >/dev/null
+follow
+has "a wrong current password is refused" "not your current password"
+post /account/change_password.php 'current=hopperpassword1&password=hopperpassword2&password2=hopperpassword3' >/dev/null
+follow
+has "two new passwords that differ are refused" "do not match"
+post /account/change_password.php 'current=hopperpassword1&password=short&password2=short' >/dev/null
+follow
+has "a too-short password is refused" "at least 10 characters"
+is "  ...leaving the old password in place" "1" \
+  "$(sq "select count(*) from users where id=$grace_id and password_hash is not null")"
+
+post /account/change_password.php 'current=hopperpassword1&password=hopperpassword2&password2=hopperpassword2' >/dev/null
+is "a password change returns to the password tab" \
+  "/account/?saved=Password%20changed#tab-password" "$(loc)"
+follow
+has "  ...saying so" "Password changed"
+has "  ...and the session it was made from still works" "Grace H. Hopper"
+
+echo "== who is offered the other accounts =="
+# Only checked for two different people, because the navbar offers /users/ to anybody signed in and
+# the button on the Access tab is the thing being tested. Grace gets a jar of her own, since $JAR is
+# hers and signing in again on a copy would strand it. Ada makes the role change, so the check does
+# not depend on what Grace happened to be promoted to earlier in this file.
+post_as "$grace_jar" /login/login.php 'email=grace@example.com&password=hopperpassword2' >/dev/null
+rm -f "$JAR"
+post /login/login.php 'email=ada@example.com&password=correcthorse1' >/dev/null
+post /users/roles.php "user_id=$grace_id&roles[]=2" >/dev/null
+get_as "$grace_jar" '/account/#tab-access' >/dev/null
+hasnt "a member is not offered the other accounts" ">Manage users</a>"
+post /users/roles.php "user_id=$grace_id&roles[]=1&roles[]=2" >/dev/null
+get_as "$grace_jar" '/account/#tab-access' >/dev/null
+has "  ...but an admin is" ">Manage users</a>"
+post /users/roles.php "user_id=$grace_id&roles[]=2" >/dev/null
+is "the section leaves one admin, as the next one needs" "1" \
+  "$(sq "select count(*) from user_roles ur join roles r on r.id=ur.role_id where r.slug='admin'")"
+
+echo "== switching an account off and on =="
+rm -f "$JAR"
+post /login/login.php 'email=ada@example.com&password=correcthorse1' >/dev/null
+is "the endpoint is POST only" "405" "$(get /users/set_active.php)"
+is "an unknown user is refused" "404" "$(post /users/set_active.php 'user_id=99999&active=0')"
+is "a missing state is refused" "400" "$(post /users/set_active.php "user_id=$grace_id")"
+has "  ...rather than guessed at" "Say whether the account should be active"
+
+# Grace signs in on a jar of her own, and is dropped to a plain member so the account being switched
+# off has no admin powers of its own to muddy what is being checked.
+post_as "$grace_jar" /login/login.php 'email=grace@example.com&password=hopperpassword2' >/dev/null
+is "a deactivated account is not what is signed in here" "/index.php" "$(loc)"
+post /users/roles.php "user_id=$grace_id&roles[]=2" >/dev/null
+
+is "a member cannot switch an account off" "403" \
+  "$(post_as "$grace_jar" /users/set_active.php 'user_id=1&active=0')"
+is "  ...and the row is untouched" "1" "$(sq "select active from users where id=1")"
+
+is "the only admin cannot switch themselves off" "400" "$(post /users/set_active.php 'user_id=1&active=0')"
+has "  ...saying why" "only admin"
+is "  ...and they are still active" "1" "$(sq "select active from users where id=1")"
+
+is "switching an account off redirects" "302" "$(post /users/set_active.php "user_id=$grace_id&active=0")"
+is "  ...back to the list" "/users/" "$(loc)"
+is "  ...and the row says so" "0" "$(sq "select active from users where id=$grace_id")"
+is "  ...leaving the account and its name alone" "Grace H. Hopper" \
+  "$(sq "select name from users where id=$grace_id")"
+get /users/ >/dev/null
+has "  ...and the list calls it Deactivated" "Deactivated"
+has "  ...offering to switch it back on" "Reactivate"
+# users_list() sorts on active first, so a switched-off account is at the top of the list rather than
+# buried among the active ones -- it is the row an admin is most likely to be looking for.
+grace_at=$(grep -n "id=\"user-$grace_id\"" "$BODY" | cut -d: -f1)
+ada_at=$(grep -n 'id="user-1"' "$BODY" | cut -d: -f1)
+is "  ...and it is listed above the active ones" "yes" \
+  "$([ "$grace_at" -lt "$ada_at" ] && echo yes || echo no)"
+
+# The point of the whole thing: a session that account was already holding stops counting, instead of
+# staying good until it happens to expire on its own.
+is "the session it already had stops working" "302" "$(get_as "$grace_jar" /)"
+is "  ...sent back to sign in" "/login/?next=%2F" "$(loc)"
+is "  ...and stays stopped" "302" "$(get_as "$grace_jar" /)"
+
+post_as "$grace_jar" /login/login.php 'email=grace@example.com&password=hopperpassword2' >/dev/null
+is "a switched-off account cannot sign in, back to the form" "/login/" "$(loc)"
+get_as "$grace_jar" /login/ >/dev/null
+has "  ...saying only that the details did not match" "do not match an account"
+hasnt "  ...without revealing that it exists but is off" "eactivat"
+
+post /users/set_active.php "user_id=$grace_id&active=1" >/dev/null
+is "switching it back on redirects to the list" "/users/" "$(loc)"
+is "  ...and the row says so" "1" "$(sq "select active from users where id=$grace_id")"
+post_as "$grace_jar" /login/login.php 'email=grace@example.com&password=hopperpassword2' >/dev/null
+is "  ...and it signs in again" "/index.php" "$(loc)"
+
+echo "== the last admin handing over =="
+# An admin who is leaving promotes a colleague first and then switches their own account off, which
+# is only possible because self-deactivation is allowed once somebody else can still sign in.
+post /users/roles.php "user_id=$grace_id&roles[]=1&roles[]=2" >/dev/null
+is "an admin switches themselves off" "302" "$(post /users/set_active.php 'user_id=1&active=0')"
+is "  ...which takes effect on the very next request" "302" "$(get /)"
+is "  ...sending them back to sign in" "/login/?next=%2F" "$(loc)"
+is "  ...and it stays that way" "302" "$(get /)"
+post_as "$grace_jar" /login/login.php 'email=grace@example.com&password=hopperpassword2' >/dev/null
+is "the colleague they promoted signs in" "/index.php" "$(loc)"
+is "  ...and can switch the old account back on" "302" "$(post_as "$grace_jar" /users/set_active.php 'user_id=1&active=1')"
+post_as "$grace_jar" /login/login.php 'email=ada@example.com&password=correcthorse1' >/dev/null
+is "  ...and the old admin signs in again" "/index.php" "$(loc)"
+
+# Hand the main jar back as an admin, which is who the cross-site section below expects to find.
+rm -f "$JAR"
+post /login/login.php 'email=ada@example.com&password=correcthorse1' >/dev/null
+is "the section hands back an admin session" "/index.php" "$(loc)"
 
 echo "== cross-site requests =="
 # require_same_origin() reads the headers a browser cannot be forged into sending, so these drive

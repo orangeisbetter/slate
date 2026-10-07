@@ -7,14 +7,14 @@ start_session();
 
 $uid = (int)($_SESSION['uid'] ?? 0);
 if ($uid && user_exists($uid)) {
-    go('../index.php');
+    go('/index.php');
 }
 
 // Once an admin exists this page would be an unauthenticated way to mint new admins,
 // so it closes unless the operator set a key in the environment.
 $setup_key = (string)(getenv('SLATE_SETUP_KEY') ?: '');
 if (credentials_count() && $setup_key === '') {
-    go(base_url() . '/login/');
+    go('/login/');
 }
 
 $error = $_GET['error'] ?? null;
@@ -31,7 +31,7 @@ page_start('Set up', nav: false);
             <?php if ($error): ?>
                 <div class="alert alert-danger"><?= h($error) ?></div>
             <?php endif ?>
-            <form method="post" action="setup/accept_setup.php">
+            <form method="post" action="/setup/accept_setup.php">
                 <?php if ($setup_key !== ''): ?>
                     <div class="mb-3">
                         <label class="form-label" for="setup_key">Setup key</label>

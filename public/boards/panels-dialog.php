@@ -37,14 +37,9 @@ $counts = board_status_counts()[$id] ?? [];
                  cannot be inside the form, and its button says which form to submit through its form
                  attribute, which is what that attribute is for. */
         ?>
-        <form method="post" action="boards/save_panels.php" id="panels-form">
-            <input type="hidden" name="id" value="<?= $id ?>">
-            <p class="small text-body-secondary">
-                Every status can be a column on this board. A column set to <strong>Never</strong>
-                takes its projects off the board without changing them: they keep their status, and
-                they are still in the list view.
-            </p>
-            <?php board_panel_rows($id, $modes, $counts); ?>
+        <form method="post" action="/boards/save_panels.php" id="panels-form">
+              <input type="hidden" name="id" value="<?= $id ?>">
+              <?php board_panel_rows($id, $modes, $counts); ?>
         </form>
     </div>
     <div class="modal-footer">

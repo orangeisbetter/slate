@@ -35,7 +35,7 @@ if ($method === 'GET') {
         ?>
         <button type="button" class="w-100 text-start d-flex align-items-center gap-2 border rounded px-2 py-1 mb-1 bg-body<?= in_array((int)$uid, $chosen, true) ? ' d-none' : '' ?>"
                 data-picker-option data-value="<?= (int)$uid ?>"
-                hx-post="project/assign.php" hx-target="#people-form" hx-swap="innerHTML"
+                hx-post="/project/assign.php" hx-target="#people-form" hx-swap="innerHTML"
                 hx-include="#people-form, #picker-people-search" hx-vals='{"add":<?= (int)$uid ?>}'>
             <span class="text-truncate"><?= h($u['label']) ?></span>
             <?php if (!empty($u['sub'])): ?>
@@ -65,7 +65,7 @@ setAssignees($id, $ids);
 q('UPDATE projects SET updated_at=? WHERE id=?', [gmdate('c'), $id]);
 
 if (!isset($_SERVER['HTTP_HX_REQUEST'])) {
-    go(base_url() . "/project/?id=$id");
+    go("/project/?id=$id");
 }
 
 $chosen = array_map('intval', project($id)['assignees'] ?? []);
@@ -80,7 +80,7 @@ $options = user_picker_options($q ?: null);
         <input type="hidden" name="as[]" value="<?= $uid ?>">
         <span class="text-truncate"><?php user_link($uid, $u['label'] ?? 'Unknown') ?></span>
         <button type="button" class="btn-close ms-auto" aria-label="Remove <?= h($u['label'] ?? 'person') ?>"
-                hx-post="project/assign.php" hx-target="#people-form" hx-swap="innerHTML"
+                hx-post="/project/assign.php" hx-target="#people-form" hx-swap="innerHTML"
                 hx-include="closest form, #picker-people-search" hx-vals='{"remove":<?= $uid ?>}'></button>
     </div>
 <?php endforeach ?>
@@ -93,7 +93,7 @@ $options = user_picker_options($q ?: null);
     <?php foreach ($options as $uid => $u): ?>
         <button type="button" class="w-100 text-start d-flex align-items-center gap-2 border rounded px-2 py-1 mb-1 bg-body<?= in_array((int)$uid, $chosen, true) ? ' d-none' : '' ?>"
                 data-picker-option data-value="<?= (int)$uid ?>"
-                hx-post="project/assign.php" hx-target="#people-form" hx-swap="innerHTML"
+                hx-post="/project/assign.php" hx-target="#people-form" hx-swap="innerHTML"
                 hx-include="#people-form, #picker-people-search" hx-vals='{"add":<?= (int)$uid ?>}'>
             <span class="text-truncate"><?= h($u['label']) ?></span>
             <?php if (!empty($u['sub'])): ?>

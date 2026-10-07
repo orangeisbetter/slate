@@ -9,4 +9,4 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 require_admin();
 
 revoke_invite((string)($_POST['token'] ?? ''));
-go(base_url() . '/users/');
+go('/users/');

@@ -17,7 +17,7 @@ page_start('Users');
     <h1 class="h3 mb-3">Users</h1>
 
     <?php if ($admin && $new_token): ?>
-        <?php $link = base_url() . '/invite/?token=' . h($new_token); ?>
+        <?php $link = '/invite/?token=' . h($new_token); ?>
         <div class="alert alert-success">
             <div>Invitation created. Send this link to the new user:</div>
             <div class="input-group mt-2">
@@ -38,6 +38,7 @@ page_start('Users');
                     <tr>
                         <th>Name</th>
                         <th>Email</th>
+                        <th>Status</th>
                         <th>Roles</th>
                         <?php if ($admin): ?><th class="text-end">Change roles</th><?php endif ?>
                     </tr>
@@ -64,6 +65,32 @@ page_start('Users');
                             <?php endif ?>
                         </td>
                         <td>
+                            <?php if ($u['active']): ?>
+                                <span class="badge text-bg-success">Active</span>
+                            <?php else: ?>
+                                <span class="badge text-bg-secondary">Deactivated</span>
+                            <?php endif ?>
+                            <?php if ($admin): ?>
+                                <?php // The state is posted rather than inferred from what it is now, so
+                                      // resubmitting this form cannot flip it back. See set_active.php.
+                                      // Your own row gets a button too: switching yourself off is how
+                                      // the last admin hands over, once someone else can sign in. ?>
+                                <form class="d-inline" method="post" action="/users/set_active.php"
+                                      onsubmit="return confirm('<?= (int)$u['id'] === $me
+                                          ? 'Deactivate your own account? You will be signed out, and another admin will have to switch it back on.'
+                                          : ($u['active']
+                                              ? 'Deactivate this account? They will be signed out and will not be able to sign in again.'
+                                              : 'Let this account sign in again?') ?>')">
+
+                                    <input type="hidden" name="user_id" value="<?= (int)$u['id'] ?>">
+                                    <input type="hidden" name="active" value="<?= $u['active'] ? 0 : 1 ?>">
+                                    <button class="btn btn-sm btn-outline-<?= $u['active'] ? 'danger' : 'secondary' ?>">
+                                        <?= $u['active'] ? 'Deactivate' : 'Reactivate' ?>
+                                    </button>
+                                </form>
+                            <?php endif ?>
+                        </td>
+                        <td>
                             <?php $slugs = array_filter(explode(',', (string)$u['roles'])); ?>
                             <?php if (!$slugs): ?>
                                 <span class="text-body-secondary">none</span>
@@ -83,7 +110,7 @@ page_start('Users');
                                 </span>
                             <?php else: ?>
                                 <form class="d-inline-flex align-items-center gap-2" method="post"
-                                      action="users/roles.php">
+                                      action="/users/roles.php">
                                     <input type="hidden" name="user_id" value="<?= (int)$u['id'] ?>">
                                     <?php foreach ($role_options as $rid => $label): ?>
                                         <div class="form-check form-check-inline m-0">
@@ -111,7 +138,7 @@ page_start('Users');
         <div class="card mb-4">
             <div class="card-body">
                 <h2 class="h5">Invite someone</h2>
-                <form method="post" action="users/invite.php" class="row g-2 align-items-end">
+                <form method="post" action="/users/invite.php" class="row g-2 align-items-end">
                     <div class="col-md-4">
                         <label class="form-label" for="invite_email">Email</label>
                         <input class="form-control" id="invite_email" name="email" type="email" required>
@@ -154,7 +181,7 @@ page_start('Users');
                         </td>
                         <td class="text-body-secondary small"><?= dt($inv['expires_at']) ?></td>
                         <td class="text-end">
-                            <form class="d-inline" method="post" action="users/revoke_invite.php">
+                            <form class="d-inline" method="post" action="/users/revoke_invite.php">
                                 <input type="hidden" name="token" value="<?= h($inv['token']) ?>">
                                 <button class="btn btn-outline-danger btn-sm">Revoke</button>
                             </form>

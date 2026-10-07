@@ -15,4 +15,4 @@ if (!board($id)) {
 }
 
 q('DELETE FROM boards WHERE id=?', [$id]);
-go(base_url() . '/boards/');
+go('/boards/');

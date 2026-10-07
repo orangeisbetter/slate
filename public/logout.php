@@ -7,4 +7,4 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 logout_user();
-go(base_url() . '/login/');
+go('/login/');

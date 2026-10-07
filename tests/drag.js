@@ -175,8 +175,13 @@ ok(over().join() === 'done', 'moving between children of one panel keeps the hig
 
 const dropEv = fire('drop', done.inner, { dataTransfer: dt });
 ok(dropEv.defaultPrevented, 'dropping on a panel is accepted');
-ok(posted.length === 1 && posted[0].method === 'POST' && posted[0].url === 'board/move.php',
-   '  ...and posts the move');
+  // The board page is served from /board/, so a URL not named from the app root resolves to the wrong
+  // script -- board/move.php becomes /board/board/move.php. Comparing the string against what the
+  // source happens to say would pass that; resolving it against the page is what a browser does.
+  const PAGE = 'http://host/board/';
+  const postedTo = posted.length === 1 && new URL(posted[0].url, PAGE).pathname;
+  ok(posted.length === 1 && posted[0].method === 'POST' && postedTo === '/board/move.php',
+     '  ...and posts the move to the right script', posted[0] && `${posted[0].url} -> ${postedTo}`);
 ok(posted[0] && posted[0].opts.values.id === '10'
    && posted[0].opts.values.status === 'done'
    && posted[0].opts.values.board === '1',

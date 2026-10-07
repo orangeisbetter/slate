@@ -35,7 +35,7 @@ if ($id && !$b) {
                  cannot be inside the form, and its button says which form to submit through its form
                  attribute, which is what that attribute is for. */
         ?>
-        <form method="post" action="boards/save_board.php" id="board-form">
+        <form method="post" action="/boards/save_board.php" id="board-form">
             <input type="hidden" name="id" value="<?= $id ?>">
             <?php board_form_fields($b); ?>
         </form>
@@ -55,7 +55,7 @@ if ($id && !$b) {
         <button type="submit" class="btn btn-primary" form="board-form"><?= $id ? 'Save board' : 'Create board' ?></button>
     </div>
     <?php if ($id): ?>
-        <form id="delete_board" method="post" action="boards/delete_board.php"
+        <form id="delete_board" method="post" action="/boards/delete_board.php"
               onsubmit="return confirm('Delete this board? Its projects stay, but on no board.')">
             <input type="hidden" name="id" value="<?= $id ?>">
         </form>

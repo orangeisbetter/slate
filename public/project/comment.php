@@ -14,4 +14,4 @@ if (isset($_SERVER['HTTP_HX_REQUEST'])) {
     render_comments($id);
     exit;
 }
-go(base_url() . "/project/?id=$id#comments");
+go("/project/?id=$id#comments");

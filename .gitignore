@@ -7,3 +7,4 @@
 *.bak
 *.sqlite
 *.sqlite3
+/.env

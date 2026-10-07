@@ -23,7 +23,7 @@ page_start('Accept invitation');
                     This link has already been used, has expired, or does not exist.
                     Ask an administrator for a new one.
                 </p>
-                <a class="btn btn-outline-secondary" href="login/">Back to sign in</a>
+                <a class="btn btn-outline-secondary" href="/login/">Back to sign in</a>
             <?php else: ?>
                 <h1 class="h4 mb-1">Join as <?= h($role) ?></h1>
                 <p class="text-body-secondary small">
@@ -34,7 +34,7 @@ page_start('Accept invitation');
                 <?php if ($error): ?>
                     <div class="alert alert-danger"><?= h($error) ?></div>
                 <?php endif ?>
-                <form method="post" action="invite/accept_invite.php">
+                <form method="post" action="/invite/accept_invite.php">
                     <input type="hidden" name="token" value="<?= h($token) ?>">
                     <div class="mb-3">
                         <label class="form-label" for="name">Name</label>

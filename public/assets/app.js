@@ -93,8 +93,9 @@ document.addEventListener('hidden.bs.modal', e => {
 // re-rendered board back in. Only board/ renders this, and it tags <main id="board"> with
 // data-board.
 //
-// A subproject's card sits inside a wrapper that is also a .card, so grab the nearest element
-// carrying data-id: grabbing the wrapper would start a drag with nothing to move.
+// Grab the nearest element carrying data-id, rather than assuming the target is the card itself:
+// the target is whatever was pointed at, which may be the title, a badge or an avatar. A subproject
+// is the same single card as anything else, so there is no wrapper to mistake for the thing to move.
 const dragCard = target => target.closest('[data-id]');
 const board = document.getElementById('board');
 if (board) {
@@ -148,8 +149,8 @@ if (board) {
     e.preventDefault();
     clearOver();
     const id = e.dataTransfer.getData('text/plain');
-    if (id) htmx.ajax('POST', 'board/move.php', {target: '#board', swap: 'innerHTML',
-                                                     values: {id, status: col.dataset.status, board: board.dataset.board}});
+    if (id) htmx.ajax('POST', '/board/move.php', {target: '#board', swap: 'innerHTML',
+                                                    values: {id, status: col.dataset.status, board: board.dataset.board}});
   });
 }
 

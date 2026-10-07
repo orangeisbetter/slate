@@ -11,7 +11,7 @@ if (!$b) {
     page_start('Not found');
     ?>
     <div class="page-wide mx-auto p-4">
-        <p>Board not found. <a href="boards/">Back to boards</a></p>
+        <p>Board not found. <a href="/boards/">Back to boards</a></p>
     </div>
     <?php
     page_end();
@@ -40,7 +40,7 @@ $all_hidden = !array_filter($modes, fn($mode) => $mode !== 'hidden');
         </div>
         <div class="ms-auto d-flex align-items-center gap-2">
             <span class="text-body-secondary small"><?= count($on_board) ?> project<?= count($on_board) === 1 ? '' : 's' ?></span>
-            <a class="btn btn-outline-secondary" href="new/?board=<?= $id ?>">New project here</a>
+            <a class="btn btn-outline-secondary" href="/new/?board=<?= $id ?>">New project here</a>
         </div>
     </div>
     <main id="board" data-board="<?= $id ?>">
@@ -48,7 +48,7 @@ $all_hidden = !array_filter($modes, fn($mode) => $mode !== 'hidden');
             <p class="text-body-secondary mb-0">
                 Every panel on this board is set to never show, so there is nothing to draw.
                 <?php if (is_admin($me)): ?>
-                    <a href="boards/#board-<?= $id ?>">Choose which panels it has</a>.
+                    <a href="/boards/#board-<?= $id ?>">Choose which panels it has</a>.
                 <?php endif ?>
             </p>
         <?php else: ?>

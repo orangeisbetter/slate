@@ -22,7 +22,7 @@ body > * { width: 100%; }
    align-items:center, collapses to nothing when the child is taller than the window, so the top of
    a long form stays reachable instead of being pushed off-screen. */
 .page-center { min-height: 100vh; display: flex; justify-content: center; }
-.page-center > * { margin-block: auto; }
+/* .page-center > * { margin-block: auto; } */
 /* The board lays out its own columns. Bootstrap's row-cols-* fixes the count at four to a row, which
    strands the fifth status on a line of its own; auto-fit gives every column the same width, fits as
    many as the window allows and wraps only when it has to. 14rem is about the narrowest a card stays
@@ -59,11 +59,10 @@ a.card:hover { background: var(--bs-tertiary-bg); }
 a.badge, a.badge:hover { color: var(--bs-body-color); text-decoration: none; }
 a.badge.text-bg-light { color: var(--bs-body-color); }
 a.badge.text-bg-light:hover { color: var(--bs-body-color); background-color: var(--bs-gray-200); }
-/* A subproject sits inside this wrapper so its parent is named on the card. The wrapper is the
-   drag handle for the whole group, so it shows a grab cursor and the card inside it does not. */
-.subproject { background: var(--bs-body-bg); border-style: solid; cursor: grab; }
-.subproject > .card-header a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
-.subproject > .card-body > .card { margin-bottom: 0; cursor: pointer; }
+/* A subproject needs no styling of its own. It is the same .card as anything else on the board, with
+   the parent named on it in muted text, so it inherits the card hover, the grab cursor and the type
+   edge for free — which is only true because it is the card that is the link, with nothing inside
+   one link to shade differently. */
 /* A picker's dialog: the list of things still on offer. Long enough to scroll rather than push
    the dialog off the bottom, and the entries only look like buttons once pointed at. */
 .picker-list { max-height: 45vh; overflow-y: auto; }
@@ -82,3 +81,26 @@ a.badge.text-bg-light:hover { color: var(--bs-body-color); background-color: var
 /* The menu is d-none when idle, and .dropdown-menu is display:none by default; display:block here
    lets the d-none toggle win, which is the only thing that hides it. */
 .search-menu.d-none { display: none; }
+
+/* The account page's panes. Bootstrap's .tab-pane is display:none and .tab-content > .active is
+   display:block, which is the stylesheet half of a tab component whose script half this app does not
+   load -- so out of the box all three panes would be invisible. These four rules put that right using
+   :target, which needs no script at all: every pane is in the document, the one the fragment names is
+   shown, and :has() is what lets "nothing named yet" mean "show the first". */
+.account-tabs > .tab-content > .tab-pane { display: none; }
+.account-tabs > .tab-content > .tab-pane:target,
+.account-tabs:not(:has(.tab-pane:target)) > .tab-content > .tab-pane:first-child { display: block; }
+/* Something is named, so the default steps aside -- but not the named one, or clicking the first tab
+   would hide it, since :first-child and :target would both match and the hiding rule is the heavier. */
+.account-tabs:has(.tab-pane:target) > .tab-content > .tab-pane:first-child:not(:target) { display: none; }
+/* Which tab is current is CSS's job, because the markup is identical for all three and the server
+   never sees the fragment. These are Bootstrap's own .nav-link.active values, so the tab that is open
+   looks the same as it would with the script component. */
+.account-tabs:not(:has(.tab-pane:target)) .nav-link[href$="#tab-profile"],
+.account-tabs:has(#tab-profile:target) .nav-link[href$="#tab-profile"],
+.account-tabs:has(#tab-password:target) .nav-link[href$="#tab-password"],
+.account-tabs:has(#tab-access:target) .nav-link[href$="#tab-access"] {
+  color: var(--bs-nav-tabs-link-active-color);
+  background-color: var(--bs-nav-tabs-link-active-bg);
+  border-color: var(--bs-nav-tabs-link-active-border-color);
+}

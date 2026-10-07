@@ -24,10 +24,10 @@ if (!is_array($posted)) {
 }
 foreach (array_keys($posted) as $status) {
     if (!in_array($status, PANEL_ORDER, true)) {
-        go(base_url() . '/boards/?error=' . rawurlencode('Unknown panel: ' . $status));
+        go('/boards/?error=' . rawurlencode('Unknown panel: ' . $status));
     }
     if (!isset(PANEL_MODES[$posted[$status]])) {
-        go(base_url() . '/boards/?error=' . rawurlencode('Unknown panel setting: ' . $posted[$status]));
+        go('/boards/?error=' . rawurlencode('Unknown panel setting: ' . $posted[$status]));
     }
 }
 
@@ -45,4 +45,4 @@ foreach (PANEL_ORDER as $status) {
     }
 }
 
-go(base_url() . '/boards/');
+go('/boards/');

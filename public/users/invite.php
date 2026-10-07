@@ -26,4 +26,4 @@ if (user_by_email($email)) {
 }
 
 $token = new_invite($email, $name ?: null, $role_id ?: null, $me);
-go(base_url() . '/users/?invite=' . rawurlencode($token));
+go('/users/?invite=' . rawurlencode($token));

@@ -94,8 +94,8 @@ To restore: stop the app, copy the snapshot over `data/board.db`, delete any `bo
 ## Serving it over HTTPS
 
 Terminate TLS in the web server, so PHP sees `HTTPS=on` and can mark the session cookie `Secure`.
-The session cookie is set `HttpOnly` and `SameSite=Lax`, and its path follows the mount point, so a
-subdirectory install does not hand its cookie to the rest of the host.
+The session cookie is set `HttpOnly` and `SameSite=Lax`, with its path at `/`, since the app is served
+from the document root.
 
 If you terminate TLS at a reverse proxy instead, PHP will not see HTTPS and the cookie will be sent
 without the `Secure` flag. Either have the proxy set `HTTPS=on` for PHP, or turn on
@@ -171,8 +171,9 @@ created at the same moment as its content is generally not announced at all.
 
 ```sh
 php  bin/check.php     # is this PHP able to run the app at all
-bash tests/auth.sh     # sign-in, setup, invites, roles, authorization, CSRF
+bash tests/auth.sh     # sign-in, setup, invites, roles, deactivation, accounts, authorization, CSRF
 bash tests/flows.sh    # projects, boards, drag and drop, htmx fragments
+bash tests/browser-tabs.sh   # the account tabs in headless Chromium; skips itself if there is none
 php  tests/schema.php  # migrations, constraints, the schema ledger
 node tests/drag.js     # the board's drag highlight, which is client-side
 ```
@@ -203,9 +204,13 @@ data/       board.db, created by migrate.php, never committed
 ```
 
 URLs mirror the files: `public/project/index.php` is `/project/`, and its endpoints sit beside it as
-`public/project/add.php`, `public/project/update.php`, `public/project/assign.php`, and so on. Pages
-include `../src/bootstrap.php`, which is the single place that starts the session, loads shared code
-and applies the cross-origin check.
+`public/project/add.php`, `public/project/update.php`, `public/project/assign.php`, and so on. Every
+link is written from that root — `href="/project/?id=4"`, never `href="project/?id=4"` and never a bare
+fragment — because pages sit at different depths and a relative or fragment-only URL would resolve
+against whichever page the reader happens to be on. There is no `<base>` tag and no URL-building
+helper: serving the app from a subdirectory is a rewrite in the web server, not something the app has
+to detect at runtime. Pages include `../src/bootstrap.php`, which is the single place that starts the
+session, loads shared code and applies the cross-origin check.
 
 A project is addressed by its row id, and that number is also shown next to its title wherever a
 project is named, as `#4`. So the thing you read on a card is the thing you type into
@@ -215,12 +220,51 @@ subdomain is what says which install a number belongs to. `ref_badge()` in `src/
 only place that formats it.
 
 A name or a board that appears on a page is a link to the thing it names. People link to their own
-row on the user list, `users/#user-3`, which any signed-in user can reach — so there is no separate
-profile page to build first, and when one arrives only the href in `user_link()` changes. Boards link
-to `board/?id=`. Two places are deliberately left as plain text: the picker dialogs, where clicking a
-row adds it rather than going anywhere, and the avatars on a board card, because the card is itself a
-link and an anchor inside an anchor does not work. `tests/flows.sh` fails if any page grows a nested
-anchor, and checks that every user reference still has a row to land on.
+row on the user list, `users/#user-3`, which any signed-in user can reach; `/account/` is only ever
+yours, so a link to somebody *else* still goes to the user list, and `user_link()` is unchanged by
+it. Boards link to `board/?id=`. Two places are deliberately left as plain text: the picker dialogs,
+where clicking a row adds it rather than going anywhere, and the avatars on a board card, because the
+card is itself a link and an anchor inside an anchor does not work. `tests/flows.sh` fails if any page
+grows a nested anchor, and checks that every user reference still has a row to land on.
+
+An account is retired rather than deleted. `users.active` is a flag, and `/users/` gives an admin a
+Deactivate button per row that switches it either way; the account keeps its row, so the projects,
+comments, assignments and board memberships that point at `users(id)` all stay attributed to the
+person who did that work. Deleting would either orphan them or cascade the work away, and neither is
+what "this person has left" means. Two things follow from it being a flag rather than a check at the
+sign-in form. A session the account already holds stops working, because a cookie outlives the moment
+an admin clicks and an account switched off on a shared machine has to stop working there and then —
+`require_login()` throws the session away rather than redirecting, so that re-activating the account
+cannot hand the old session straight back its access. And a failed sign-in for a deactivated account
+is refused exactly as a wrong password is, word for word, so the sign-in form cannot be used to find
+out which addresses have accounts or which of them are switched off. Deactivation is refused for the
+last admin who can still sign in, for the same reason `roles.php` refuses to demote the last admin:
+nobody would be left who could invite or promote anybody, and recovery needs `SLATE_SETUP_KEY`. It is
+allowed for an admin switching *themselves* off once somebody else can sign in, because that is how
+the last admin hands over: promote a colleague, then switch yourself off.
+
+`/account/` is your own account, reached from the Account menu in the navbar. It is split into three
+tabs: **Profile** for your name and the address you sign in with, **Password** for the password form,
+and **Access** for what the account may do and the status it is in. All three panes are in the
+document and `public/assets/style.css` shows one of them, using `:target` for the pane a link points
+at and `:has()` to decide what "no pane named" means. A tab is therefore an ordinary fragment link,
+switching costs no request, and every tab works with JavaScript switched off. They are not
+Bootstrap's tab component because the stylesheet half of that hides the other panes on its own, so
+without its script half two of the three tabs would be unreachable.
+
+Both form endpoints redirect back with a fragment — `#tab-profile`, `#tab-password` — which the browser
+applies after it follows the redirect. That is why a password change lands on Password without the
+server being told which pane to draw, and it is why the tab state is not a second thing to keep
+consistent with the URL. Switching panes this way does not move focus or announce itself, and the
+markup claims no `role="tablist"` or `aria-selected`, because those promise keyboard arrow-key movement
+that only JavaScript could provide here.
+
+You can change the two things that are yours to change: your name, and your password. The password form
+asks for the current one, because without it anyone who reached an already-signed-in browser could take
+the account over permanently. The address is shown read-only, and that is the honest version rather than
+a missing feature: it is the identity the account signs in with, and changing it needs a confirmation
+sent to the new address before it takes effect, which means an outbox this app does not have. Neither
+endpoint takes a user id, so they cannot be pointed at somebody else's account by a hand-rolled POST.
 
 A board's columns are not fixed. Every status a project can hold is a panel, and the board says how it
 wants that one treated: **Always** draws the column even when it is empty, so there is always somewhere
@@ -401,10 +445,12 @@ Worth knowing before you expose this to anyone:
 
 Deliberately not built yet, and worth deciding on before this grows:
 
-- **No way to deactivate a user.** An account can be created and its role changed, but not retired.
-  Remove someone's access by changing their role, or delete the row.
 - **No email.** Invitations are a link an admin copies and sends by hand; there is no mail transport,
   no password reset, and no notification of any kind.
+- **Changing a password does not sign other devices out.** It changes the hash and gives the browser
+  you changed it in a new session id, but sessions are held in PHP's own session files with no
+  server-side index, so there is no way to find and drop the others. Revoking them needs a sessions
+  table keyed by account.
 - **No pagination.** The list view and the boards render every row. Fine for tens of projects,
   not for thousands. The header search caps its menu at eight and sends the rest to `search.php`,
   which still lists every match.

@@ -37,7 +37,7 @@ page_start($id ? 'Edit board' : 'New board');
             <?php if ($b): ?>
                 <p class="text-body-secondary"><?= h($b['name']) ?></p>
             <?php endif ?>
-            <form method="post" action="boards/save_board.php">
+            <form method="post" action="/boards/save_board.php">
                 <input type="hidden" name="id" value="<?= $id ?>">
                 <?php board_form_fields($b); ?>
                 <?php /* Delete sits at the far end of the same row as saving and cancelling, which it
@@ -52,12 +52,12 @@ page_start($id ? 'Edit board' : 'New board');
                         <button type="submit" form="delete_board" class="btn btn-outline-danger me-auto"
                                 formnovalidate>Delete board</button>
                     <?php endif ?>
-                    <a class="btn btn-outline-secondary" href="boards/">Cancel</a>
+                    <a class="btn btn-outline-secondary" href="/boards/">Cancel</a>
                     <button class="btn btn-primary"><?= $id ? 'Save board' : 'Create board' ?></button>
                 </div>
             </form>
             <?php if ($id): ?>
-                <form id="delete_board" method="post" action="boards/delete_board.php"
+                <form id="delete_board" method="post" action="/boards/delete_board.php"
                       onsubmit="return confirm('Delete this board? Its projects stay, but on no board.')">
                     <input type="hidden" name="id" value="<?= $id ?>">
                 </form>

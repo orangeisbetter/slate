@@ -18,7 +18,7 @@ function login_refused(string $email): never {
     $_SESSION['login_error'] = login_throttled($email)
         ? 'Too many attempts. Wait a few minutes and try again.'
         : 'That email and password do not match an account.';
-    go(base_url() . '/login/');
+    go('/login/');
 }
 
 // Checked before the password so the throttle actually costs an attacker the work.
@@ -27,9 +27,11 @@ if (login_throttled($email)) {
 }
 
 // A seeded user with no password_hash can never match, and needs an admin to invite
-// them again rather than a password reset.
+// them again rather than a password reset. A deactivated account is refused in the same breath
+// and for the same reason as a wrong password: this form must not be a way of finding out which
+// addresses have accounts, or which of those are switched off.
 $user = user_by_email($email);
-if (!$user || !check_password($password, $user['password_hash'])) {
+if (!$user || !$user['active'] || !check_password($password, $user['password_hash'])) {
     record_login_failure($email);
     login_refused($email);
 }
@@ -42,4 +44,4 @@ if (password_needs_rehash($user['password_hash'], PASSWORD_DEFAULT)) {
 }
 
 login_user((int)$user['id']);
-go('../' . ltrim($next, '/'));
+go($next);

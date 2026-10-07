@@ -8,7 +8,7 @@ $sort = ($_GET['sort'] ?? 'updated') === 'created' ? 'created' : 'updated';   //
 
 $filter = (int)($_GET['board'] ?? 0);       // 0 = all boards
 if ($filter && !board($filter)) {
-    go(base_url() . '/index.php');
+    go('/index.php');
 }
 
 if ($filter > 0) {
@@ -39,20 +39,20 @@ page_start('All projects');
         <span class="ms-3 text-body-secondary small"><?= count($all) ?> total</span>
         <div class="btn-group btn-group-sm ms-auto">
             <a class="btn btn-outline-secondary<?= $sort === 'updated' ? ' active' : '' ?>"
-               href="list/?sort=updated">Recently updated</a>
+               href="/list/?sort=updated">Recently updated</a>
             <a class="btn btn-outline-secondary<?= $sort === 'created' ? ' active' : '' ?>"
-               href="list/?sort=created">Newest</a>
+               href="/list/?sort=created">Newest</a>
         </div>
     </div>
     <div class="d-flex align-items-center gap-2 mb-3 small">
         <span class="text-body-secondary">Board:</span>
-        <a class="btn btn-outline-secondary btn-sm<?= !isset($_GET['board']) ? ' active' : '' ?>" href="list/">All</a>
+        <a class="btn btn-outline-secondary btn-sm<?= !isset($_GET['board']) ? ' active' : '' ?>" href="/list/">All</a>
         <?php foreach (boards() as $board): ?>
             <a class="btn btn-outline-secondary btn-sm<?= $filter === (int)$board['id'] ? ' active' : '' ?>"
-               href="list/?board=<?= (int)$board['id'] ?>"><?= h($board['name']) ?></a>
+               href="/list/?board=<?= (int)$board['id'] ?>"><?= h($board['name']) ?></a>
         <?php endforeach ?>
         <a class="btn btn-outline-secondary btn-sm<?= $filter === 0 && isset($_GET['board']) ? ' active' : '' ?>"
-           href="list/?board=0">No board</a>
+           href="/list/?board=0">No board</a>
     </div>
     <div class="table-responsive card">
         <table class="table table-hover align-middle mb-0">
@@ -75,7 +75,7 @@ page_start('All projects');
                 <?php foreach ($all as $project): ?>
                     <tr>
                         <td>
-<a class="fw-medium text-decoration-none" href="project/?id=<?= $project['id'] ?>"><?php ref_badge((int)$project['id']) ?><?= h($project['title']) ?></a>
+<a class="fw-medium text-decoration-none" href="/project/?id=<?= $project['id'] ?>"><?php ref_badge((int)$project['id']) ?><?= h($project['title']) ?></a>
                               <?php if ($project['parent_id']): ?>
                                   <div class="small text-body-secondary">in <?php ref_badge((int)$project['parent_id']) ?><?= h($parent_titles[$project['parent_id']] ?? '') ?></div>
                             <?php endif ?>

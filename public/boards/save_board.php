@@ -13,10 +13,10 @@ $name = trim((string)($_POST['name'] ?? ''));
 $description = trim((string)($_POST['description'] ?? ''));
 
 if ($name === '') {
-    go(base_url() . '/boards/?error=' . rawurlencode('A board needs a name'));
+    go('/boards/?error=' . rawurlencode('A board needs a name'));
 }
 if (chars($name) > 80) {
-    go(base_url() . '/boards/?error=' . rawurlencode('Board names are limited to 80 characters'));
+    go('/boards/?error=' . rawurlencode('Board names are limited to 80 characters'));
 }
 
 if ($id) {
@@ -29,4 +29,4 @@ if ($id) {
       [$name, $description, $me, gmdate('c')]);
 }
 
-go(base_url() . '/boards/');
+go('/boards/');

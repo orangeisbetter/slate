@@ -44,7 +44,7 @@ function db_is_current(): bool {
     $needed_tables = ['users', 'projects', 'comments', 'status_log', 'roles', 'user_roles', 'invites',
                       'boards', 'project_boards'];
     return count(array_intersect($needed_tables, $tables)) === count($needed_tables)
-        && count(array_intersect(['email', 'password_hash'], $columns)) === 2;
+        && count(array_intersect(['email', 'password_hash', 'active'], $columns)) === 3;
 }
 
 function q(string $sql, array $args = []): PDOStatement {
@@ -159,7 +159,7 @@ function create_project_from_post(int $creator): never {
     if ($parent) {                             // adding underneath a project counts as touching it
         q('UPDATE projects SET updated_at=? WHERE id=?', [$now, $parent]);
     }
-    go(base_url() . '/project/?id=' . ($parent ?: $id));   // a subproject returns to its parent
+    go('/project/?id=' . ($parent ?: $id));   // a subproject returns to its parent
 }
 
 /**
@@ -193,37 +193,12 @@ function update_project_from_post(): never {
     if ($st !== $existing['status']) {
         logStatus($id, $existing['status'], $st);
     }
-    go(base_url() . "/project/?id=$id");
-}
-
-/**
- * URL prefix the app is served under, so every internal URL is built from one known place:
- * '' at the web root, '/projects' when it sits in a subdirectory. It is the mount point of the
- * document root, not the directory of the running script, which is what a page in its own
- * directory (/board/, /login/) or an action (/project/update.php) would otherwise report.
- */
-function base_url(): string {
-    // The app's own public directory, on disk: lib.php lives in src/, one level up from it.
-    $public = realpath(dirname(__DIR__) . '/public') ?: '';
-    $script = realpath($_SERVER['SCRIPT_FILENAME'] ?? '') ?: '';
-    $name = $_SERVER['SCRIPT_NAME'] ?? '';
-    // Take the script's path inside public/ off the front of its URL: '/projects/board/index.php'
-    // minus 'board/index.php' leaves '/projects', the directory public/ itself is served from, and
-    // '' when that is the web root. Anchoring on the document root instead would be wrong, because
-    // the URL of a subdirectory install leads with a directory that is not in public/ at all.
-    // Anything unrecognised (the command line, an unusual SAPI) falls back to the web root.
-    if ($public !== '' && $script !== '' && str_starts_with($script, $public . '/')) {
-        $rel = substr(str_replace('\\', '/', $script), strlen($public) + 1);
-        if (str_ends_with($name, '/' . $rel)) {
-            return rtrim(substr($name, 0, strlen($name) - strlen($rel)), '/');
-        }
-    }
-    return '';
+    go("/project/?id=$id");
 }
 
 /** Keeps redirects on this site: only root-relative paths, never protocol-relative ones. */
 function safe_next(string $next): string {
-    return preg_match('#^/(?!/)#', $next) ? $next : base_url() . '/index.php';
+    return preg_match('#^/(?!/)#', $next) ? $next : '/index.php';
 }
 
 // ---- users, roles, sessions ----
@@ -233,9 +208,40 @@ function user_exists(int $id): bool {
     return (bool)$db->query('SELECT 1 FROM users WHERE id=' . (int)$id)->fetchColumn();
 }
 
+function user(int $id): ?array {
+    $stmt = q('SELECT * FROM users WHERE id=?', [$id]);
+    return $stmt->fetch() ?: null;
+}
+
 function user_by_email(string $email): ?array {
     $stmt = q('SELECT * FROM users WHERE email=?', [strtolower(trim($email))]);
     return $stmt->fetch() ?: null;
+}
+
+function user_by_slack_id(string $slack_id): ?array {
+    $stmt = q('SELECT * FROM users WHERE slack_id=?', [trim($slack_id)]);
+    return $stmt->fetch() ?: null;
+}
+
+/** Link a Slack account to an existing user by id. */
+function link_slack(int $user_id, string $slack_id): void {
+    q('UPDATE users SET slack_id=? WHERE id=?', [trim($slack_id), $user_id]);
+}
+
+
+/** False for an account that has been deactivated. Such an account keeps its name on old records. */
+function user_is_active(int $id): bool {
+    global $db;
+    return (bool)$db->query('SELECT active FROM users WHERE id=' . (int)$id)->fetchColumn();
+}
+
+/**
+ * Turns sign-in on or off for an account. Callers are responsible for the guards: deactivating
+ * yourself or the last admin is refused by the endpoint, not here, because only the caller knows
+ * who is asking.
+ */
+function set_user_active(int $id, bool $active): void {
+    q('UPDATE users SET active=? WHERE id=?', [$active ? 1 : 0, $id]);
 }
 
 /** Accounts that can actually sign in. Users seeded before auth existed cannot. */
@@ -260,6 +266,15 @@ function create_user(string $name, string $email, string $password, array $role_
     set_roles($id, $role_slugs);
     return $id;
 }
+function create_user_from_slack(string $name, ?string $email, string $slack_id, array $role_slugs = ['member']): int {
+    global $db;
+    $stmt = $db->prepare('INSERT INTO users(name,email,slack_id) VALUES(?,?,?)');
+    $stmt->execute([$name, $email ? strtolower(trim($email)) : null, trim($slack_id)]);
+    $id = (int)$db->lastInsertId();
+    set_roles($id, $role_slugs);
+    return $id;
+}
+
 
 function all_roles(): array {
     return q('SELECT id,label FROM roles ORDER BY id')->fetchAll(PDO::FETCH_KEY_PAIR);
@@ -282,14 +297,31 @@ function is_admin(?int $user_id): bool {
     return $user_id ? in_array('admin', roles((int)$user_id), true) : false;
 }
 
+/**
+ * How many admins there are, optionally counting only those who could still sign in. Losing the last
+ * one strands the install: nobody is left who can invite or promote anybody, and getting a
+ * replacement needs SLATE_SETUP_KEY, which a plain install does not set.
+ */
+function admin_count(bool $active_only = false): int {
+    $sql = 'SELECT COUNT(*) FROM user_roles ur
+            JOIN roles r ON r.id = ur.role_id
+            JOIN users u ON u.id = ur.user_id
+            WHERE r.slug=?';
+    if ($active_only) {
+        $sql .= ' AND u.active=1';
+    }
+    return (int)q($sql, ['admin'])->fetchColumn();
+}
+
 /** Every user with their roles, for the users page. can_login is false for name-only accounts. */
 function users_list(): array {
-    return q('SELECT u.id, u.name, u.email, u.password_hash IS NOT NULL AS can_login, GROUP_CONCAT(r.slug) AS roles
+    return q('SELECT u.id, u.name, u.email, u.active,
+                     u.password_hash IS NOT NULL AS can_login, GROUP_CONCAT(r.slug) AS roles
               FROM users u
               LEFT JOIN user_roles ur ON ur.user_id = u.id
               LEFT JOIN roles r ON r.id = ur.role_id
               GROUP BY u.id
-              ORDER BY u.name')->fetchAll();
+              ORDER BY u.active, u.name')->fetchAll();
 }
 
 // ---- invites ----
@@ -384,7 +416,13 @@ function board_status_counts(): array {
 }
 
 /**
- * Projects whose title matches $q, subprojects included, most recently updated first.
+ * Projects whose title or description matches $q, subprojects included, most recently updated first.
+ *
+ * The query is split into keywords on whitespace, and every keyword has to match at least one of the
+ * two fields. Order and the gap between words do not matter, so "power bench" and "bench supply" both
+ * find "Bench Power Supply": a term only has to be somewhere in the title or the description. That is
+ * what "matches" means here, not rank: the rows stay in updated order, so two projects matching the
+ * same words come back newest first rather than best first.
  *
  * $limit of 0 means every match, which is what the results page wants; the header box asks for a
  * handful instead. It has to be a missing clause rather than LIMIT 0, which asks for no rows at all
@@ -398,23 +436,36 @@ function board_status_counts(): array {
  * SQLite's LIKE folds ASCII case but not the rest, so a title with an accented letter matches only
  * on its exact case.
  *
- * % and _ are escaped, so searching for them looks for them. Left alone they are wildcards, and a
- * query of "%" would come back with every project in it.
+ * % and _ are escaped per keyword, so searching for them looks for them. Left alone they are
+ * wildcards, and a query of "%" would come back with every project in it.
  */
 function search_projects(string $q, int $limit = 0): array {
     $q = trim($q);
     if ($q === '') {
         return [];
     }
-    $like = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $q) . '%';
     $by_id = preg_match('/^#?(\d+)$/', $q) ? (int)ltrim($q, '#') : null;
+    $groups = [];
+    $args = [];
+    foreach (preg_split('/\s+/', $q, -1, PREG_SPLIT_NO_EMPTY) as $term) {
+        $like = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $term) . '%';
+        $groups[] = "(title LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\')";
+        $args[] = $like;
+        $args[] = $like;
+    }
+    if ($by_id !== null) {
+        $args[] = $by_id;
+    }
     $cap = $limit > 0 ? ' LIMIT ?' : '';
-    $args = $by_id === null ? [$like] : [$like, $by_id];
     if ($cap !== '') {
         $args[] = $limit;
     }
+    $where = '(' . implode(' AND ', $groups) . ')';
+    if ($by_id !== null) {
+        $where .= ' OR id = ?';
+    }
     return q("SELECT * FROM projects
-              WHERE title LIKE ? ESCAPE '\\'" . ($by_id === null ? '' : ' OR id = ?') . "
+              WHERE $where
               ORDER BY updated_at DESC, id DESC" . $cap, $args)->fetchAll();
 }
 
@@ -534,9 +585,9 @@ function start_session(): void {
     session_name('slate');
     session_set_cookie_params([
         'lifetime' => SESSION_LIFETIME,
-        // The mount point, not always the web root: a subdirectory install should not hand its
-        // cookie to everything else on the host. base_url() is '' at the root, which gives '/'.
-        'path' => base_url() . '/',
+        // The app is served from the document root, so '/' is the whole path. Serving it from a
+        // subdirectory is a rewrite at the web server, and the cookie path follows that config.
+        'path' => '/',
         'httponly' => true,
         // Lax rather than Strict: invite links are followed from email, and Strict would
         // drop the cookie on that first navigation. Lax still withholds it on cross-site

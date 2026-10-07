@@ -17,20 +17,20 @@ $name = trim((string)($_POST['name'] ?? ''));
 $password = (string)($_POST['password'] ?? '');
 
 if (!$invite) {
-    go(base_url() . '/invite/?error=' . rawurlencode('This invitation is no longer valid'));
+    go('/invite/?error=' . rawurlencode('This invitation is no longer valid'));
 }
 if ($name === '') {
-    go(base_url() . '/invite/?token=' . rawurlencode($token) . '&error=' . rawurlencode('Name is required'));
+    go('/invite/?token=' . rawurlencode($token) . '&error=' . rawurlencode('Name is required'));
 }
 if (strlen($password) < MIN_PASSWORD) {
-    go(base_url() . '/invite/?token=' . rawurlencode($token)
+    go('/invite/?token=' . rawurlencode($token)
        . '&error=' . rawurlencode('Passwords need at least ' . MIN_PASSWORD . ' characters'));
 }
 if ($password !== (string)($_POST['password2'] ?? '')) {
-    go(base_url() . '/invite/?token=' . rawurlencode($token) . '&error=' . rawurlencode('Passwords do not match'));
+    go('/invite/?token=' . rawurlencode($token) . '&error=' . rawurlencode('Passwords do not match'));
 }
 if (user_by_email($invite['email'])) {
-    go(base_url() . '/invite/?token=' . rawurlencode($token)
+    go('/invite/?token=' . rawurlencode($token)
        . '&error=' . rawurlencode('That email address already has an account'));
 }
 
@@ -42,4 +42,4 @@ $id = create_user($name, $invite['email'], $password, $slugs);
 q('UPDATE invites SET accepted_at=? WHERE token=?', [gmdate('c'), $token]);
 
 login_user($id);
-go('../index.php');
+go('/index.php');

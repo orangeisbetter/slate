@@ -10,9 +10,6 @@ $boards = boards();
 // No panel settings are read here: what columns a board has is the Panels dialog's business, and
 // this page has no need to know. That is one query the page used to make and no longer does.
 $error = $_GET['error'] ?? null;
-$unassigned = (int)q('SELECT COUNT(*) FROM projects p
-                     WHERE NOT EXISTS (SELECT 1 FROM project_boards pb WHERE pb.project_id=p.id)')
-                     ->fetchColumn();
 
 page_start('Boards');
 ?>
@@ -20,12 +17,6 @@ page_start('Boards');
     <div class="d-flex align-items-start gap-3 mb-1">
         <div>
             <h1 class="h3 mb-0">Boards</h1>
-            <p class="text-body-secondary mb-0">
-                A project can sit on any number of boards.
-                <?php if ($unassigned): ?>
-                    <a href="list/?board=0"><?= $unassigned ?> project<?= $unassigned === 1 ? ' is' : 's are' ?> on no board.</a>
-                <?php endif ?>
-            </p>
         </div>
         <?php if ($admin): ?>
             <!-- Every button here is a pair: an href naming the page its dialog is drawn from, and an
@@ -33,9 +24,9 @@ page_start('Boards');
                  swaps; a browser without it follows the href and gets the form on a page of its own.
                  An anchor rather than a button, because a button with only an hx-get is nothing at
                  all without JavaScript. -->
-            <a class="btn btn-primary ms-auto" href="boards/edit.php"
+            <a class="btn btn-primary ms-auto" href="/boards/edit.php"
                data-bs-toggle="modal" data-bs-target="#board-modal"
-               hx-get="boards/edit-dialog.php" hx-target="#board-content" hx-swap="outerHTML">
+               hx-get="/boards/edit-dialog.php" hx-target="#board-content" hx-swap="outerHTML">
                 New board
             </a>
         <?php endif ?>
@@ -70,7 +61,7 @@ page_start('Boards');
                     <?php $id = (int)$board['id']; ?>
                     <tr id="board-<?= $id ?>">
                         <td>
-                            <a class="fw-semibold text-decoration-none d-block" href="board/?id=<?= $id ?>">
+                            <a class="fw-semibold text-decoration-none d-block" href="/board/?id=<?= $id ?>">
                                 <?= h($board['name']) ?>
                             </a>
                             <?php if ($board['description']): ?>
@@ -84,13 +75,13 @@ page_start('Boards');
                                      fills the dialog. outerHTML because the dialog arrives whole —
                                      header, body and footer, the way Bootstrap's example puts
                                      them — which is why there is a separate endpoint for it. -->
-                                <a class="btn btn-outline-secondary" href="boards/panels.php?id=<?= $id ?>"
+                                <a class="btn btn-outline-secondary" href="/boards/panels.php?id=<?= $id ?>"
                                    data-bs-toggle="modal" data-bs-target="#panels-modal"
-                                   hx-get="boards/panels-dialog.php?id=<?= $id ?>" hx-target="#panels-content"
+                                   hx-get="/boards/panels-dialog.php?id=<?= $id ?>" hx-target="#panels-content"
                                    hx-swap="outerHTML">Panels</a>
-                                <a class="btn btn-outline-secondary" href="boards/edit.php?id=<?= $id ?>"
+                                <a class="btn btn-outline-secondary" href="/boards/edit.php?id=<?= $id ?>"
                                    data-bs-toggle="modal" data-bs-target="#board-modal"
-                                   hx-get="boards/edit-dialog.php?id=<?= $id ?>" hx-target="#board-content"
+                                   hx-get="/boards/edit-dialog.php?id=<?= $id ?>" hx-target="#board-content"
                                    hx-swap="outerHTML">Edit</a>
                             </td>
                         <?php endif ?>
