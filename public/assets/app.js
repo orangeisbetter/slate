@@ -158,8 +158,20 @@ if (board) {
 // The menu under the search box is a plain positioned div, not a Bootstrap dropdown, so it inherits
 // none of their dismiss behaviour and needs its own: Escape, and a click anywhere else, both close
 // it. htmx re-shows it on the next keystroke, so hiding it here cannot strand it shut.
+//
+// "/" or Cmd/Ctrl+K focuses the box from anywhere, like the quick switcher it almost is.
+// It never fires while typing in a field, so a "/" inside a comment stays a "/".
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') document.querySelectorAll('.search-wrap .search-menu').forEach(m => m.classList.add('d-none'));
+  const t = e.target && e.target.closest ? e.target.closest('input, textarea, select, [contenteditable="true"], [contenteditable=""]') : e.target;
+  if (t) return;
+  if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    const box = document.querySelector('.search-wrap input[type="search"]');
+    if (box) { e.preventDefault(); box.focus(); }
+  } else if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && (e.key === 'k' || e.key === 'K')) {
+    const box = document.querySelector('.search-wrap input[type="search"]');
+    if (box) { e.preventDefault(); box.focus(); }
+  }
 });
 document.addEventListener('click', e => {
   if (e.target.closest('.search-wrap')) return;
@@ -267,3 +279,124 @@ function slateToast(detail, headline) {
 document.body.addEventListener('htmx:responseError', e => slateToast(e.detail, 'That did not save.'));
 document.body.addEventListener('htmx:sendError',   e => slateToast(e.detail, 'Could not reach the server.'));
 document.body.addEventListener('htmx:timeout',     e => slateToast(e.detail, 'The server took too long.'));
+
+class MultiSelect extends HTMLElement {
+    static formAssociated = true;
+
+    constructor() {
+        super();
+
+        this._internals = this.attachInternals();
+        this._options = [];
+    }
+
+    connectedCallback() {
+        this._options = [...this.querySelectorAll('option')];
+
+        this._render();
+        this._update();
+    }
+
+    _render() {
+        const allLabel = this.getAttribute('all-label') ?? 'All';
+
+        this.innerHTML = `
+            <div class="dropdown">
+                <button class="btn btn-outline-secondary dropdown-toggle"
+                        type="button"
+                        data-bs-toggle="dropdown"
+                        data-bs-auto-close="outside">
+                    ${allLabel}
+                </button>
+
+                <div class="dropdown-menu">
+                    <label class="dropdown-item">
+                        <input class="form-check-input me-2"
+                               type="checkbox"
+                               data-all>
+                        ${allLabel}
+                    </label>
+
+                    <hr class="dropdown-divider">
+
+                    ${this._options.map(option => `
+                        <label class="dropdown-item">
+                            <input class="form-check-input me-2"
+                                   type="checkbox"
+                                   data-option
+                                   data-default="${option.dataset.default}"
+                                   value="${this._escape(option.value)}"
+                                   ${option.selected ? 'checked' : ''}>
+                            ${this._escape(option.textContent)}
+                        </label>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+
+        this._button = this.querySelector('button');
+        this._all = this.querySelector('[data-all]');
+        this._inputs = [...this.querySelectorAll('[data-option]')];
+
+        this._all.addEventListener('change', () => {
+            this._inputs.forEach(input => {
+                input.checked = this._all.checked;
+            });
+
+            this._update();
+        });
+
+        this._inputs.forEach(input => {
+            input.addEventListener('change', () => this._update());
+        });
+    }
+
+    _update() {
+        const selected = this._inputs.filter(input => input.checked);
+
+        const allSelected = selected.length === this._inputs.length;
+
+        this._all.checked = allSelected;
+
+        if (allSelected) {
+            this._button.textContent = this.getAttribute('all-label') ?? 'All';
+        } else if (selected.length === 0) {
+            this._button.textContent = 'None';
+        } else if (selected.length === 1) {
+            this._button.textContent = selected[0].parentElement.textContent.trim();
+        } else {
+            this._button.textContent = `${selected.length} selected`;
+        }
+
+        const useDefault = this._inputs.every(input => input.checked == (input.dataset.default === "true"));
+
+        this._updateFormValue(selected, useDefault);
+    }
+
+    _updateFormValue(selected, useDefault) {
+        if (!this.name || useDefault) {
+            this._internals.setFormValue(null);
+            return;
+        }
+
+        const formData = new FormData();
+
+        for (const input of selected) {
+            formData.append(this.name, input.value);
+        }
+
+        this._internals.setFormValue(formData);
+    }
+
+    get name() {
+        return this.getAttribute('name');
+    }
+
+    _escape(value) {
+        const div = document.createElement('div');
+        div.textContent = value;
+        return div.innerHTML;
+    }
+}
+
+customElements.define('multi-select', MultiSelect);

@@ -37,7 +37,7 @@ function require_login(): int {
 /** As require_login, but for admin-only endpoints. */
 function require_admin(): int {
     $uid = require_login();
-    if (!is_admin($uid)) {
+    if (!has_role($uid, Role::Admin)) {
         bad('Admins only', 403);
     }
     return $uid;

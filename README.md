@@ -73,6 +73,7 @@ Everything is optional and set as environment variables on the PHP process.
 | `SLATE_SETUP_KEY` | Requires this key at `/setup/`. Optional on a fresh install; once an account exists, `/setup/` is only reachable with it. Set it if you might ever need to create another admin. |
 | `SLATE_DEBUG=1` | Renders the full detail of an error on the page instead of just a reference code. For development only — it discloses file paths and SQL. |
 | `SLATE_CSRF_STRICT=1` | Refuses state-changing requests that carry no cross-origin headers at all, instead of allowing them. See below. |
+| `SLACK_ALLOWED_TEAM_ID` | Limits Slack sign-in and linking to members of that workspace (the `T…` id). Unset means any workspace, as before. |
 
 ## Backups
 
@@ -171,26 +172,27 @@ created at the same moment as its content is generally not announced at all.
 
 ```sh
 php  bin/check.php     # is this PHP able to run the app at all
+cd tests && .venv/bin/python -m pytest -q   # the suite
+php  tests/schema.php  # migrations, constraints, the schema ledger
 bash tests/auth.sh     # sign-in, setup, invites, roles, deactivation, accounts, authorization, CSRF
 bash tests/flows.sh    # projects, boards, drag and drop, htmx fragments
 bash tests/browser-tabs.sh   # the account tabs in headless Chromium; skips itself if there is none
-php  tests/schema.php  # migrations, constraints, the schema ledger
 node tests/drag.js     # the board's drag highlight, which is client-side
 ```
 
-The two shell suites copy the app to a temp directory, migrate a throwaway database there, and drive
-it over HTTP — `auth.sh` on port 8125, `flows.sh` on 8127. They never touch `data/board.db`.
-`tests/seed.php` creates fixtures and is not meant for a real database. `flows.sh` also starts a
-second server on the next port with `mb_strtolower` and `mb_strlen` disabled, because the extension
-being absent is a failure the suite cannot otherwise see from a machine that has it.
+The suite is Python, in `tests/test_*.py`, run from `tests/` with pytest. It copies the app to a
+temp directory, migrates a throwaway database there, and drives it over HTTP — never touching
+`data/board.db`. `tests/conftest.py` holds the fixtures: the server, the clients, the accounts, and
+`tests/seed.php` the rows they work against. Each module pins one part of the app: authentication and
+authorization, projects, boards and their panels, search, validation, comments, assignees, the
+dashboard, the list view, and — in `test_admin.py` — the admin area and the statuses it administers.
 
-`flows.sh` runs `tests/drag.js` as well, and skips it with a line saying so if `node` is absent. It is
-the only suite that executes JavaScript: it loads the real `public/assets/app.js` into a DOM stub
-small enough to read — `closest`, `contains`, `classList`, bubbling listeners, a `dataTransfer` — and
-dispatches the drag events at it. The reason it exists is that a dashed outline left on a panel
-cannot be seen from server-rendered markup, and reading the source cannot tell you whether a
-highlight survives a drag that ended in the wrong place. A class toggled inside a listener either
-works or fails silently, so the only honest test is to run it.
+The two shell suites are the previous generation, left in place rather than rewritten: they still
+name `/users/` and `PANEL_ORDER`, both of which are gone, and so no longer pass. What nothing in the
+Python suite has replaced is `tests/browser-tabs.sh`, the account tabs in a real browser, and
+`tests/drag.js`: the board's drag highlight is client-side, and a class toggled inside a listener
+either works or fails silently, so the only honest test is to run it. `flows.sh` runs it too, and
+skips it with a line saying so if `node` is absent.
 
 ## How it is put together
 
@@ -199,7 +201,7 @@ public/     the document root: pages, endpoints, and assets, colocated
 src/        bootstrap, shared library, views, error handling
 db/         migrations, applied in filename order and recorded in schema_migrations
 bin/        migrate.php, backup.php
-tests/      shell suites, schema checks, fixtures
+tests/      the Python suite, schema checks, fixtures, the older shell suites
 data/       board.db, created by migrate.php, never committed
 ```
 
@@ -219,16 +221,19 @@ carries no product prefix on purpose: a deployment on its own subdomain keeps it
 subdomain is what says which install a number belongs to. `ref_badge()` in `src/views.php` is the
 only place that formats it.
 
-A name or a board that appears on a page is a link to the thing it names. People link to their own
-row on the user list, `users/#user-3`, which any signed-in user can reach; `/account/` is only ever
-yours, so a link to somebody *else* still goes to the user list, and `user_link()` is unchanged by
-it. Boards link to `board/?id=`. Two places are deliberately left as plain text: the picker dialogs,
-where clicking a row adds it rather than going anywhere, and the avatars on a board card, because the
-card is itself a link and an anchor inside an anchor does not work. `tests/flows.sh` fails if any page
-grows a nested anchor, and checks that every user reference still has a row to land on.
+A name or a board that appears on a page is a link to the thing it names, with one deliberate
+exception for people. `user_link()` points an admin at that person's row on the user list,
+`/admin/users/#user-3`, and hands anyone else the name as plain text: a href a member cannot follow
+is worse than no href at all, and `/account/` is only ever your own, so there is nowhere else for a
+name to point. Boards link to `board/?id=`. Two places are deliberately left as plain text: the
+picker dialogs, where clicking a row adds it rather than going anywhere, and the avatars on a board
+card, because the card is itself a link and an anchor inside an anchor does not work. `tests/flows.sh`
+fails if any page grows a nested anchor, and checks that every user reference still has a row to
+land on.
 
-An account is retired rather than deleted. `users.active` is a flag, and `/users/` gives an admin a
-Deactivate button per row that switches it either way; the account keeps its row, so the projects,
+An account is retired rather than deleted. `users.active` is a flag, and `/admin/users/` gives an
+admin a Deactivate button per row that switches it either way; the account keeps its row, so the
+projects,
 comments, assignments and board memberships that point at `users(id)` all stay attributed to the
 person who did that work. Deleting would either orphan them or cascade the work away, and neither is
 what "this person has left" means. Two things follow from it being a flag rather than a check at the
@@ -243,17 +248,19 @@ nobody would be left who could invite or promote anybody, and recovery needs `SL
 allowed for an admin switching *themselves* off once somebody else can sign in, because that is how
 the last admin hands over: promote a colleague, then switch yourself off.
 
-`/account/` is your own account, reached from the Account menu in the navbar. It is split into three
-tabs: **Profile** for your name and the address you sign in with, **Password** for the password form,
-and **Access** for what the account may do and the status it is in. All three panes are in the
+`/account/` is your own account, reached from the Account menu in the navbar. It is split into two
+tabs: **Profile** for your name and the roles the account holds, and **Sign-in** for how you get in —
+the address you sign in with, the password form, and the Slack connection. Both panes are in the
 document and `public/assets/style.css` shows one of them, using `:target` for the pane a link points
 at and `:has()` to decide what "no pane named" means. A tab is therefore an ordinary fragment link,
 switching costs no request, and every tab works with JavaScript switched off. They are not
 Bootstrap's tab component because the stylesheet half of that hides the other panes on its own, so
-without its script half two of the three tabs would be unreachable.
+without its script half the second tab would be unreachable. The roles are shown and not editable:
+they are what an admin grants at `/admin/users/`, and a form on your own page that could hand you a
+role would be a way around every check that role is subject to.
 
-Both form endpoints redirect back with a fragment — `#tab-profile`, `#tab-password` — which the browser
-applies after it follows the redirect. That is why a password change lands on Password without the
+Both form endpoints redirect back with a fragment — `#tab-profile`, `#tab-signin` — which the browser
+applies after it follows the redirect. That is why a password change lands on Sign-in without the
 server being told which pane to draw, and it is why the tab state is not a second thing to keep
 consistent with the URL. Switching panes this way does not move focus or announce itself, and the
 markup claims no `role="tablist"` or `aria-selected`, because those promise keyboard arrow-key movement
@@ -263,32 +270,70 @@ You can change the two things that are yours to change: your name, and your pass
 asks for the current one, because without it anyone who reached an already-signed-in browser could take
 the account over permanently. The address is shown read-only, and that is the honest version rather than
 a missing feature: it is the identity the account signs in with, and changing it needs a confirmation
-sent to the new address before it takes effect, which means an outbox this app does not have. Neither
-endpoint takes a user id, so they cannot be pointed at somebody else's account by a hand-rolled POST.
+sent to the new address before it takes effect, which means an outbox this app does not have. The Slack
+connection can be taken back off the account the same way it was put on, with one guard: an account
+with no password of its own would be left with no way to sign in at all, so unlinking is refused until
+a password is set. None of the endpoints takes a user id, so they cannot be pointed at somebody else's
+account by a hand-rolled POST.
 
-A board's columns are not fixed. Every status a project can hold is a panel, and the board says how it
-wants that one treated: **Always** draws the column even when it is empty, so there is always somewhere
-to drop a card; **Only when it has projects** draws it only while something is in it, which is the
-useful setting for a status a board uses occasionally — and which also means the column is not on the
-page at all while it is empty, so it cannot be dropped into; **Never** leaves it off the board. A board
-with nobody's opinion on record gets To do, In progress and Done, and an admin sets the rest from the
-Panels dialog on `/boards/`. That the list is every status rather than the five that used to have
-columns is the point: a project moved to Blocked used to disappear from its board entirely, because
-nothing matched its status. Hiding a panel hides nothing else: the projects stay on the board with
-their status untouched and are still in the list view, so **Never** is a display choice and not a way
-to lose work. Because the default is the absence of a row, only the panels that differ from it are
-stored in `board_panels`; storing all nine per board would mean nine rows per board, nearly all of them
+`/admin/` is the admin area, linked from the navbar, which offers it only to an admin; anyone else
+is refused at every path under it with a 403, rather than sent to a page pretending there is nothing
+there. It holds two things, and the hub page is nothing but a link to each. `/admin/users/` is the
+user list — invites, roles, deactivation — which used to sit at `/users/` and was reachable by any
+signed-in user; it is admin-only now, which is also why `user_link()` only ever draws a link an admin
+can follow. `/admin/statuses/` administers the statuses themselves, and is where the rest of this
+section starts.
+
+Every status a project can hold is a row in `project_statuses`, created, renamed, reordered, marked
+finished or deleted at `/admin/statuses/`. They used to be two constants in `src/lib.php` — `LABELS`
+for what they are called and `PANEL_ORDER` for the order — which meant a status this app did not
+ship with could not exist at all; an install that wanted "Waiting on QA" had to edit the source and
+redeploy. Each row carries the slug, the label, the Bootstrap tone it is drawn in, whether it counts
+as finished, and its place in the order. The slug is what `projects.status` and `status_log` store,
+so it is fixed once the status is made: renaming changes what a status is called everywhere it is
+offered, and never what its existing projects say they are on. `status_label()` falls back to the
+slug when the row is missing, which is the shape history is in after a delete — the log keeps its
+entries, since a record of what things were called at the time is not a record of what they are
+called now.
+
+A status can only be deleted while nothing is on it, and the refusal says how many projects are and
+leaves the status where it was. That is the whole policy — no `active` flag, no retired marker, no
+way to park a status that is still in use — because a project sitting on a deleted status is one no
+page knows how to draw, and a soft delete would leave exactly that state reachable by the next admin
+to click. The status's `board_panels` rows go with it, since a panel for a status that no longer
+exists is a column that can never be filled.
+
+Which statuses count as finished is the admin's call as well. `is_finished` is what the dashboard
+subtracts from its Open tile, what the list view leaves out of its default filter, and what the
+overdue styling gives up on — a finished project is not late, whatever its due date says. `done` and
+`cancelled` ship marked finished; that is the seeded default rather than a constant, and an install
+that finishes at `shipped` marks that one and leaves the rest.
+
+A board's columns are those statuses as panels, and the board says how it wants that one treated:
+**Always** draws the column even when it is empty, so there is always somewhere to drop a card;
+**Only when it has projects** draws it only while something is in it, which is the useful setting for
+a status a board uses occasionally — and which also means the column is not on the page at all while
+it is empty, so it cannot be dropped into; **Never** leaves it off the board. A board with nobody's
+opinion on record gets To do, In progress and Done, and an admin sets the rest from the Panels dialog
+on `/boards/` — including a status just created, which arrives as **Never** until a board asks for it,
+so adding a status changes no board by itself. That the list is every status rather than a fixed set
+of columns is the point: a project moved to Blocked used to disappear from its board entirely,
+because nothing matched its status. Hiding a panel hides nothing else: the projects stay on the board
+with their status untouched and are still in the list view, so **Never** is a display choice and not a
+way to lose work. Because the default is the absence of a row, only the panels that differ from it are
+stored in `board_panels`; storing one row per status per board would mean nearly all of them
 repeating the default, and every one of them a place for a row to disagree with it.
 
-The *order* of the columns is not stored anywhere. It is `PANEL_ORDER` in `src/lib.php`, one list
-everywhere — the board, the Panels dialog, the save endpoint, and the project's status dropdown — so a
-status reads the same wherever it is offered. It is deliberately not `LABELS` order: `review_ready` was
-appended to `LABELS` when it was added and sits at the end of it, but it belongs before `review`, since
-that is the order the two happen in. Building the dropdown from `LABELS` put "Ready for review" below
-"Cancelled" and split the two review stages apart; `flows.sh` reads the whole option sequence back and
-compares it to `PANEL_ORDER` for that reason. No board can rearrange its columns, on purpose: the order
-encodes how work flows, and letting each board change it would make "Done" mean something different on
-two boards. What an admin chooses is which panels exist and how each behaves, not where they sit.
+The *order* of the columns is the order on `/admin/statuses/`, held as `sort_order` and moved with
+the up and down arrows there — one list everywhere, the board, the Panels dialog, and the project's
+status dropdown, so a status reads the same wherever it is offered. Migration 008 seeds the nine the
+app used to hard-code in the order they were in, which is what keeps `review_ready` before `review`
+even though it was the last of them added: appended to `LABELS`, it landed below Cancelled and the
+dropdown put "Ready for review" under "Cancelled", splitting the two review stages apart. No board
+can rearrange its columns, on purpose: the order encodes how work flows, and letting each board
+change it would make "Done" mean something different on two boards. What an admin chooses is which
+panels exist, how each behaves, and where a status sits in the flow — not what each board calls
+normal.
 
 `/boards/` is a table — Board, Projects, and for an admin Actions — because a board has three facts
 about it and a row of them is a row of columns. The panels a board has are deliberately not summarised
@@ -399,7 +444,8 @@ server as you type and swaps a menu of matches underneath, offering eight and th
 rest, and it takes a project number as readily as a title: `4` and `#4` both find the same project,
 which is what makes the `#4` worth reading. The form is a real GET to `search.php`, so with JavaScript
 unavailable the same box submits and returns a page of every match, and `/search.php?q=fix` is a
-shareable list. Titles are the only thing matched. Two details are deliberate: the input sits outside
+shareable list. A project is found by its title, description, comments or assignee names.
+Two details are deliberate: the input sits outside
 the region htmx replaces, because replacing the box a person is typing into takes the caret with it and
 would leave the field accepting exactly one letter; and `%` and `_` are escaped, so a query of `%`
 looks for a percent sign rather than returning every project in the install. SQLite folds ASCII case
@@ -454,9 +500,8 @@ Deliberately not built yet, and worth deciding on before this grows:
 - **No pagination.** The list view and the boards render every row. Fine for tens of projects,
   not for thousands. The header search caps its menu at eight and sends the rest to `search.php`,
   which still lists every match.
-- **Search matches titles only.** Not descriptions, comments or assignee names, and not a fuzzy
-  match: `bnch` finds nothing. Widening it means deciding what a project is "found by", which is
-  a smaller change to `search_projects()` than it looks.
+- **Search is substring only.** Titles, descriptions, comments and assignee names are all
+  matched, but not fuzzily: `bnch` finds nothing.
 - **No CSRF tokens**, by the design described above. The header check covers current browsers; a
   token in the form is the belt-and-braces option if you need one.
 - **No LICENCE, and no privacy policy page.** The footer says only what is true of this app: nothing is

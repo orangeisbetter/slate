@@ -25,7 +25,7 @@ if ($id && !$b) {
 <div class="modal-content" id="board-content">
     <div class="modal-header">
         <h5 class="modal-title" id="board-title">
-            <?= $id ? 'Edit board &mdash; ' . h($b['name']) : 'New board' ?>
+            <?= $id ? 'Edit board &mdash; ' . h($b->name) : 'New board' ?>
         </h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
     </div>

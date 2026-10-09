@@ -1,9 +1,11 @@
 <?php
-// The signed-in user's own account, in three panes: what they are called, what they sign in with, and
-// what the account may do. The email address is shown read-only, because it is the identity the
-// account signs in with and changing it needs a confirmation sent to the new address before it took
-// effect -- which would mean an outbox this app does not have. Until that exists, read-only is the
-// honest version rather than a missing feature.
+// The signed-in user's own account, in two panes: what they are called, and how they sign in.
+// The email address is shown read-only, because it is the identity the account signs in with and
+// changing it needs a confirmation sent to the new address before it took effect -- which would
+// mean an outbox this app does not have. Until that exists, read-only is the honest version rather
+// than a missing feature. Roles are read-only here for the opposite reason: they are what an admin
+// grants at /admin/users/, and a form that let an account hand itself a role would be a way around
+// every check that role is subject to.
 const SLATE_REQUIRE_LOGIN = true;
 require __DIR__ . '/../../src/bootstrap.php';
 
@@ -15,20 +17,20 @@ $slugs = roles($me);
 // The panes are switched with :target and :has() in public/assets/style.css. Every pane is in the
 // document and CSS shows one of them, so a tab is an ordinary fragment link and switching costs no
 // request and no JavaScript. Bootstrap's tab component is deliberately not used: the stylesheet half
-// of it hides every pane but the active one, so without JavaScript the other two are unreachable, and
-// the script half is what this app has been avoiding everywhere else. Nothing claims role="tablist" or
-// aria-selected either, because those promise arrow-key movement between panes that JavaScript would
-// have to provide, and claiming them without it tells a screen reader something untrue. The honest
-// cost is that moving between panes does not shift focus or announce itself.
+// of it hides every pane but the active one, so without JavaScript the other pane is unreachable,
+// and the script half is what this app has been avoiding everywhere else. Nothing claims
+// role="tablist" or aria-selected either, because those promise arrow-key movement between panes
+// that JavaScript would have to provide, and claiming them without it tells a screen reader
+// something untrue. The honest cost is that moving between panes does not shift focus or announce
+// itself.
 //
-// Both form endpoints redirect back with a fragment -- #profile, #password -- which the browser
-// applies after it follows the redirect. So a password change lands on Password without the server
-// needing to be told which pane to render, and without the tab state being a second thing to keep
-// consistent with the URL.
+// Both form endpoints redirect back with a fragment -- #tab-profile, #tab-signin -- which the
+// browser applies after it follows the redirect. So a password change lands on Sign-in without the
+// server needing to be told which pane to render, and without the tab state being a second thing
+// to keep consistent with the URL.
 $tabs = [
-    'profile'  => 'Profile',
-    'password' => 'Password',
-    'access'   => 'Access',
+    'profile' => 'Profile',
+    'signin'  => 'Sign-in',
 ];
 
 page_start('Your account');
@@ -53,7 +55,7 @@ page_start('Your account');
                 <?php foreach ($tabs as $key => $label): ?>
                     <li class="nav-item">
                         <?php // A bare fragment is safe here, and only here: these links exist on no
-                              // other page, and this one already serves all three panes, so "#tab-profile"
+                              // other page, and this one already serves both panes, so "#tab-profile"
                               // resolves against /account/ and lands back on this page. The redirects in
                               // the endpoints below still name /account/ because they arrive by POST
                               // from somewhere else. ?>
@@ -75,7 +77,7 @@ page_start('Your account');
                                     <div class="col-sm-8">
                                         <label class="form-label" for="name">Name</label>
                                         <input class="form-control" id="name" name="name" required maxlength="100"
-                                               value="<?= h($me_row['name']) ?>">
+                                               value="<?= h($me_row->name) ?>">
                                     </div>
                                     <div class="col-sm-4">
                                         <button class="btn btn-primary w-100">Save</button>
@@ -88,19 +90,19 @@ page_start('Your account');
                     <div class="col-lg-5">
                         <div class="card h-100">
                             <div class="card-body">
-                                <h2 class="h5">Your email address</h2>
-                                <?php if (!empty($me_row['password_hash'])): ?>
-                                    <input class="form-control mb-3" value="<?= h($me_row['email']) ?>" readonly
-                                           aria-label="Your email address">
+                                <h2 class="h5">Your roles</h2>
+                                <?php if (!$slugs): ?>
+                                    <p class="text-body-secondary mb-0">none</p>
                                 <?php else: ?>
-                                    <p class="text-body-secondary mb-3">no account</p>
-                                <?php endif ?>
-                                <h2 class="h5">Slack connection</h2>
-                                <?php if (!empty($me_row['slack_id'])): ?>
-                                    <p class="text-success mb-0">Linked to Slack</p>
-                                <?php else: ?>
-                                    <p class="text-body-secondary mb-0">Not linked</p>
-                                    <a class="small" href="/login/slack.php?next=/account/#tab-profile">Link Slack account</a>
+                                    <?php foreach ($slugs as $slug): ?>
+                                        <?php // The slug, not the label: the users list renders
+                                              // roles the same way, and one account should not
+                                              // name its own roles differently from how it names
+                                              // everybody else's. ?>
+                                        <span class="badge text-bg-<?= $slug === Role::Admin->value ? 'primary' : 'secondary' ?> me-1">
+                                            <?= h($slug) ?>
+                                        </span>
+                                    <?php endforeach ?>
                                 <?php endif ?>
                             </div>
                         </div>
@@ -108,8 +110,8 @@ page_start('Your account');
                 </div>
             </div>
 
-            <div class="tab-pane" id="tab-password">
-                <div class="row">
+            <div class="tab-pane" id="tab-signin">
+                <div class="row g-3">
                     <div class="col-lg-7">
                         <div class="card">
                             <div class="card-body">
@@ -143,56 +145,35 @@ page_start('Your account');
                             </div>
                         </div>
                     </div>
-                </div>
-            </div>
 
-            <div class="tab-pane" id="tab-access">
-                <div class="row g-3">
-                    <div class="col-lg-7">
-                        <div class="card">
+                    <div class="col-lg-5">
+                        <div class="card h-100">
                             <div class="card-body">
-                                <h2 class="h5">What this account may do</h2>
-                                <dl class="row mb-0">
-                                    <dt class="col-sm-4 fw-medium">Roles</dt>
-                                    <dd class="col-sm-8">
-                                        <?php if (!$slugs): ?>
-                                            <span class="text-body-secondary">none</span>
-                                        <?php else: ?>
-                                            <?php foreach ($slugs as $slug): ?>
-                                                <?php // The slug, not the label: the users list renders
-                                                      // roles the same way, and one account should not
-                                                      // name its own roles differently from how it names
-                                                      // everybody else's. ?>
-                                                <span class="badge text-bg-<?= $slug === 'admin' ? 'primary' : 'secondary' ?> me-1">
-                                                    <?= h($slug) ?>
-                                                </span>
-                                            <?php endforeach ?>
-                                        <?php endif ?>
-                                    </dd>
+                                <h2 class="h5">Your email address</h2>
+                                <?php if (!empty($me_row->password_hash)): ?>
+                                    <input class="form-control mb-3" value="<?= h($me_row->email) ?>" readonly
+                                           aria-label="Your email address">
+                                <?php else: ?>
+                                    <p class="text-body-secondary mb-3">no account</p>
+                                <?php endif ?>
 
-                                    <dt class="col-sm-4 fw-medium">Status</dt>
-                                    <dd class="col-sm-8 mb-0">
-                                        <?php if ($me_row['active']): ?>
-                                            <span class="badge text-bg-success">Active</span>
-                                        <?php else: ?>
-                                            <span class="badge text-bg-secondary">Deactivated</span>
-                                        <?php endif ?>
-                                    </dd>
-                                </dl>
+                                <h2 class="h5">Slack connection</h2>
+                                <?php if (!empty($me_row->slack_id)): ?>
+                                    <p class="text-success mb-2">Linked to Slack</p>
+                                    <?php // Same pattern as the other destructive forms here and on
+                                          // /admin/statuses/: the browser's confirm() before the POST,
+                                          // since there is no undo dialog of our own to draw. ?>
+                                    <form method="post" action="/account/unlink_slack.php" class="mb-0"
+                                          onsubmit="return confirm('Unlink Slack from this account?')">
+                                        <button class="btn btn-outline-danger">Unlink</button>
+                                    </form>
+                                <?php else: ?>
+                                    <p class="text-body-secondary mb-1">Not linked</p>
+                                    <a class="small" href="/login/slack.php?next=/account/#tab-signin">Link Slack account</a>
+                                <?php endif ?>
                             </div>
                         </div>
                     </div>
-
-                    <?php if (is_admin($me)): ?>
-                        <div class="col-lg-5">
-                            <div class="card h-100">
-                                <div class="card-body">
-                                    <h2 class="h5">Other accounts</h2>
-                                    <a class="btn btn-outline-primary" href="/users/">Manage users</a>
-                                </div>
-                            </div>
-                        </div>
-                    <?php endif ?>
                 </div>
             </div>
         </div>

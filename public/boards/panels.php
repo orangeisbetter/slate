@@ -29,7 +29,7 @@ page_start('Panels');
 ?>
 <div class="page-wide mx-auto p-4">
     <h1 class="h4">Panels</h1>
-    <p class="text-body-secondary"><?= h($b['name']) ?></p>
+    <p class="text-body-secondary"><?= h($b->name) ?></p>
     <form method="post" action="/boards/save_panels.php">
           <input type="hidden" name="id" value="<?= $id ?>">
           <?php board_panel_rows($id, $modes, $counts); ?>

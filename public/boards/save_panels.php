@@ -16,14 +16,14 @@ if (!$id || !board($id)) {
 }
 
 // One field per status, named panels[todo] and so on. Anything not named is left alone, and a status
-// that is not a column is refused rather than stored: the columns are PANEL_ORDER, which is every
+// that is not a column is refused rather than stored: the columns are panel_order(), which is every
 // status a project can hold, so a row for anything else could only ever be dead weight.
 $posted = $_POST['panels'] ?? [];
 if (!is_array($posted)) {
     bad('Panels are posted as a set', 400);
 }
 foreach (array_keys($posted) as $status) {
-    if (!in_array($status, PANEL_ORDER, true)) {
+    if (!in_array($status, panel_order(), true)) {
         go('/boards/?error=' . rawurlencode('Unknown panel: ' . $status));
     }
     if (!isset(PANEL_MODES[$posted[$status]])) {
@@ -34,12 +34,12 @@ foreach (array_keys($posted) as $status) {
 // Rewritten rather than diffed: the board has one small set of rows, and deleting them all first
 // means a panel dropped from the form goes back to the default instead of keeping a stale setting.
 q('DELETE FROM board_panels WHERE board_id=?', [$id]);
-foreach (PANEL_ORDER as $status) {
+foreach (panel_order() as $status) {
     $mode = $posted[$status] ?? null;
     if ($mode === null) {
         continue;   // not named: whatever the default is, which is what an absent row means
     }
-    $default = in_array($status, DEFAULT_BOARD_PANELS, true) ? 'required' : 'hidden';
+    $default = in_array($status, default_board_panels(), true) ? 'required' : 'hidden';
     if ($mode !== $default) {
         q('INSERT INTO board_panels(board_id,status,mode) VALUES(?,?,?)', [$id, $status, $mode]);
     }

@@ -29,7 +29,7 @@ page_start($q === '' ? 'Search' : 'Search: ' . $q);
 <div class="page-wide mx-auto p-3 p-md-4">
     <h1 class="h4 mb-3"><?= $q === '' ? 'Search projects' : 'Matches for &ldquo;' . h($q) . '&rdquo;' ?></h1>
     <?php if ($q === ''): ?>
-        <div class="text-body-secondary">Type a title, or a project number such as <code>#1</code>,
+        <div class="text-body-secondary">Type a title, description, comment or assignee name — or a project number such as <code>#1</code>,
             into the box in the header.</div>
     <?php elseif (!$hits): ?>
         <div class="text-body-secondary">Nothing matches.</div>
@@ -41,10 +41,10 @@ page_start($q === '' ? 'Search' : 'Search: ' . $q);
                 <tbody>
                 <?php foreach ($hits as $p): ?>
                     <tr>
-                        <td><?php ref_badge((int)$p['id']) ?></td>
-                        <td><a href="/project/?id=<?= (int)$p['id'] ?>"><?= h($p['title']) ?></a></td>
-                        <td><?php type_badge($p['type']) ?></td>
-                        <td><span class="badge text-bg-<?= TONE[$p['status']] ?>"><?= h(LABELS[$p['status']]) ?></span></td>
+                        <td><?php ref_badge((int)$p->id) ?></td>
+                        <td><a href="/project/?id=<?= (int)$p->id ?>"><?= h($p->title) ?></a></td>
+                        <td><?php type_badge($p->type) ?></td>
+                        <td><span class="badge text-bg-<?= status_tone($p->status) ?>"><?= h(status_label($p->status)) ?></span></td>
                     </tr>
                 <?php endforeach ?>
                 </tbody>

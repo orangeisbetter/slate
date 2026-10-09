@@ -35,7 +35,7 @@ page_start($id ? 'Edit board' : 'New board');
         <div class="col-sm-9 col-md-7 col-lg-5">
             <h1 class="h4"><?= $id ? 'Edit board' : 'New board' ?></h1>
             <?php if ($b): ?>
-                <p class="text-body-secondary"><?= h($b['name']) ?></p>
+                <p class="text-body-secondary"><?= h($b->name) ?></p>
             <?php endif ?>
             <form method="post" action="/boards/save_board.php">
                 <input type="hidden" name="id" value="<?= $id ?>">

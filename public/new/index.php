@@ -4,8 +4,6 @@
 const SLATE_REQUIRE_LOGIN = true;
 require __DIR__ . '/../../src/bootstrap.php';
 
-$blank = ['title' => '', 'description' => '', 'status' => 'todo', 'type' => 'task',
-          'start_date' => '', 'due_date' => '', 'assignees' => []];
 
 $board_id = (int)($_GET['board'] ?? 0);
 $boards = ($board_id && board($board_id)) ? [$board_id] : [];
@@ -17,7 +15,7 @@ page_start('New project');
         <ol class="breadcrumb">
             <li class="breadcrumb-item"><a href="/index.php">Dashboard</a></li>
             <?php if ($board_id && board($board_id)): ?>
-                <li class="breadcrumb-item"><a href="/board/?id=<?= $board_id ?>"><?= h(board($board_id)['name']) ?></a></li>
+                <li class="breadcrumb-item"><a href="/board/?id=<?= $board_id ?>"><?= h(board($board_id)->name) ?></a></li>
             <?php endif ?>
             <li class="breadcrumb-item active">New project</li>
         </ol>
@@ -27,7 +25,7 @@ page_start('New project');
         <div class="col-lg-7">
             <div class="card">
                 <div class="card-body">
-                    <?php project_form($blank, null, $boards, '/new/add.php') ?>
+                    <?php project_form(null, null, $boards, '/new/add.php') ?>
                 </div>
             </div>
         </div>

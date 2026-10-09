@@ -21,7 +21,7 @@ $tables = array_column($db->query("SELECT name FROM sqlite_master WHERE type='ta
 echo "tables\n";
 foreach (['users', 'projects', 'comments', 'status_log', 'project_assignees', 'roles', 'user_roles',
           'invites', 'login_attempts', 'schema_migrations', 'boards', 'project_boards',
-          'board_panels'] as $table) {
+          'board_panels', 'project_statuses'] as $table) {
     ok(in_array($table, $tables, true), $table);
 }
 
@@ -41,7 +41,7 @@ foreach (['id', 'name', 'email', 'password_hash', 'active'] as $column) {
 
 echo "seeded roles\n";
 $roles = $db->query('SELECT slug FROM roles ORDER BY id')->fetchAll(PDO::FETCH_COLUMN);
-ok($roles === ['admin', 'member'], 'roles are admin, member in that order (got: ' . implode(', ', $roles) . ')');
+ok($roles === ['admin'], 'the only seeded role is admin (got: ' . implode(', ', $roles) . ')');
 
 // Everything from here to the ledger writes probe rows into the real database, so it all runs
 // inside one transaction that is rolled back at the end. A failed run leaves nothing behind.
@@ -72,6 +72,28 @@ foreach (['project_id', 'board_id', 'added_by'] as $column) {
 }
 foreach (['board_id', 'status', 'mode'] as $column) {
     ok(in_array($column, $columns('board_panels'), true), "board_panels.$column");
+}
+
+echo "project_statuses\n";
+foreach (['id', 'slug', 'label', 'tone', 'sort_order', 'is_finished'] as $column) {
+    ok(in_array($column, $columns('project_statuses'), true), "project_statuses.$column");
+}
+// The slug is the identity: it is what projects.status holds, so two statuses cannot share one and
+// the constraint belongs in the schema rather than in the form.
+$ddl = (string)$db->query("SELECT sql FROM sqlite_master WHERE type='table' AND name='project_statuses'")->fetchColumn();
+ok(str_contains($ddl, 'slug TEXT NOT NULL UNIQUE'), 'project_statuses is keyed on a unique slug');
+// Probed rather than assumed; the INSERT is inside the outer transaction, which is rolled back.
+$first = $db->query('SELECT slug, label, tone, sort_order, is_finished FROM project_statuses ORDER BY sort_order LIMIT 1')->fetch();
+if ($first) {
+    try {
+        $db->prepare('INSERT INTO project_statuses(slug,label,tone,sort_order) VALUES(?,?,?,?)')
+           ->execute([$first['slug'], 'Duplicate probe', 'secondary', 99]);
+        ok(false, 'a second status cannot take a slug that is taken');
+    } catch (PDOException $e) {
+        ok(true, 'a second status cannot take a slug that is taken');
+    }
+} else {
+    echo "  --   skipped the slug probe: there is no status to collide with\n";
 }
 // The mode is the whole of what a panel can be, so it is constrained in the schema rather than
 // trusted from the form: a row saying something else would be a panel nothing knows how to draw.
@@ -117,6 +139,8 @@ ok((int)$db->query("SELECT COUNT(*) FROM boards WHERE name LIKE 'Schema probe%'"
    'probe rows rolled back');
 ok((int)$db->query("SELECT COUNT(*) FROM users WHERE name LIKE 'Null probe%'")->fetchColumn() === 0,
    'user probes rolled back');
+ok((int)$db->query("SELECT COUNT(*) FROM project_statuses WHERE label='Duplicate probe'")->fetchColumn() === 0,
+   'status probes rolled back');
 
 echo "ledger\n";
 $migrations = $db->query('SELECT filename FROM schema_migrations ORDER BY filename')->fetchAll(PDO::FETCH_COLUMN);

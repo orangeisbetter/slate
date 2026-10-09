@@ -2,7 +2,7 @@
 // Admin only: switches an account's sign-in on or off. Deactivating keeps the account and everything
 // it authored; it just stops the account signing in, and stops any session it already has.
 const SLATE_REQUIRE_LOGIN = true;
-require __DIR__ . '/../../src/bootstrap.php';
+require __DIR__ . '/../../../src/bootstrap.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     bad('POST only', 405);
@@ -28,7 +28,7 @@ if (!$active) {
     // install does not set. This is also what covers an admin switching themselves off while they
     // are the last one -- there is nobody left to switch them back on, and the account page they
     // would use to fix it needs a session they no longer have.
-    if (is_admin($target) && admin_count(true) <= 1) {
+    if (has_role($target, Role::Admin) && admin_count(true) <= 1) {
         bad('This is the only admin who can still sign in. Promote someone else first.');
     }
     // Deactivating yourself is allowed as long as the guard above is satisfied, because that is how
@@ -37,4 +37,4 @@ if (!$active) {
 }
 
 set_user_active($target, $active);
-go('/users/');
+go('/admin/users/');

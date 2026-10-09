@@ -21,50 +21,75 @@ if (!$p) {
 // Ancestors of this project, outermost first, for the breadcrumb.
 $ancestors = [];
 $current = $p;
-while ($current['parent_id'] && ($current = project($current['parent_id']))) {
+while ($current->parent_id && ($current = project($current->parent_id))) {
 	array_unshift($ancestors, $current);
 }
 
-$subprojects = q('SELECT id,title,status,type,due_date FROM projects WHERE parent_id=? ORDER BY id', [$id])->fetchAll();
-$history = q('SELECT * FROM status_log WHERE project_id=? ORDER BY id', [$id])->fetchAll();
+$subprojects = q('SELECT * FROM projects WHERE parent_id=? ORDER BY id', [$id])->fetchAll(PDO::FETCH_CLASS | PDO::FETCH_PROPS_LATE, Project::class);
 
-page_start($p['title']);
+page_start($p->title);
 ?>
 	<div class="page-wide mx-auto p-3 p-md-4">
 		<nav aria-label="breadcrumb">
 			<ol class="breadcrumb">
 				<li class="breadcrumb-item"><a href="/index.php">Dashboard</a></li>
 				<?php foreach ($ancestors as $ancestor): ?>
-					<li class="breadcrumb-item"><a href="/project/?id=<?= $ancestor['id'] ?>"><?php ref_badge((int)$ancestor['id']) ?><?= h($ancestor['title']) ?></a></li>
+					<li class="breadcrumb-item"><a href="/project/?id=<?= $ancestor->id ?>"><?php ref_badge((int)$ancestor->id) ?><?= h($ancestor->title) ?></a></li>
 				<?php endforeach ?>
-				<li class="breadcrumb-item active"><?= h($p['title']) ?></li>
+				<li class="breadcrumb-item active"><?= h($p->title) ?></li>
 			</ol>
 		</nav>
 		<div class="d-flex align-items-center gap-2 mb-2">
-			<h1 class="h3 mb-0"><?php ref_badge($id) ?><?= h($p['title']) ?></h1>
-			<?php type_badge($p['type']) ?>
+			<h1 class="h3 mb-0"><?php ref_badge($id) ?><?= h($p->title) ?></h1>
+			<?php type_badge($p->type) ?>
 		</div>
 		<div class="row mb-3">
 			<div class="col-auto">
-				<select class="form-select" name="status" hx-patch="/project/update_status.php" hx-swap="none" hx-vals='{"id": <?= $id ?>}'>
-					<?php // PANEL_ORDER, not LABELS: this is the order work moves through, and LABELS has
-					       // review_ready appended at the end, which put "Ready for review" below
-					       // "Cancelled" and split the two review stages apart. The same list the board
-					       // draws its columns from, so a status reads the same in both places. ?>
-					<?php foreach (PANEL_ORDER as $status): ?>
-						<option value="<?= $status ?>"<?= $status === $p['status'] ? ' selected' : '' ?>><?= LABELS[$status] ?></option>
+				<select class="form-select" name="status" hx-patch="/project/update_status.php" hx-target="#status-history-list" hx-swap="outerHTML" hx-vals='{"id": <?= $id ?>}'>
+					<?php // panel_order(), the order work moves through — one list everywhere the statuses
+					       // are offered, so a status reads the same here as on the board. ?>
+					<?php foreach (panel_order() as $status): ?>
+						<option value="<?= $status ?>"<?= $status === $p->status ? ' selected' : '' ?>><?= status_label($status) ?></option>
 					<?php endforeach ?>
 				</select>
 			</div>
 		</div>
 		<div class="row g-4">
-			<div class="col-lg-8">
-				<div class="card mb-2">
-					<div class="card-body">
-						<?php project_form($p, $id, [], '/project/update.php') ?>
+		<div class="col-lg-8">
+			<?php // The description flip card: the rendered text is the view, the textarea the edit
+			       // state, and the card holds one at a time — the place it is read is the place it
+			       // is written. The switch is a hidden checkbox flipped by labels, so unlike a
+			       // fragment link it navigates nowhere and scrolls nothing; saving posts to
+			       // description.php next door. ?>
+			<div class="card mb-2 desc-card">
+				<input type="checkbox" id="desc-toggle" class="desc-toggle visually-hidden">
+				<div class="card-body" id="desc-view">
+					<div class="d-flex align-items-center gap-2 mb-2">
+						<span class="fw-semibold">Description</span>
+						<label class="btn btn-sm btn-outline-secondary ms-auto" for="desc-toggle">Edit</label>
 					</div>
+					<?php if (trim($p->description) !== ''): ?>
+						<div id="project-description"><?= rich_text($p->description) ?></div>
+					<?php else: ?>
+						<div class="text-body-secondary small">No description yet.</div>
+					<?php endif ?>
 				</div>
-				<p class="text-body-secondary small mb-4">Created <?= dt($p['created_at']) ?>. Last updated <?= dt($p['updated_at']) ?>.</p>
+				<div class="card-body" id="desc-edit">
+					<form method="post" action="/project/description.php">
+						<input type="hidden" name="id" value="<?= $id ?>">
+						<label class="form-label fw-semibold" for="desc">Description</label>
+						<textarea class="form-control mb-2" id="desc" name="description" rows="6"><?= h($p->description) ?></textarea>
+						<button class="btn btn-primary">Save description</button>
+						<label class="btn btn-outline-secondary" for="desc-toggle">Cancel</label>
+					</form>
+				</div>
+			</div>
+			<div class="card mb-2">
+				<div class="card-body">
+					<?php project_form($p, $id, [], '/project/update.php', false) ?>
+				</div>
+			</div>
+				<?php last_updated_line($p) ?>
 				<div class="card mb-3">
 					<div class="card-header fw-semibold">Subprojects</div>
 					<div class="list-group list-group-flush">
@@ -72,14 +97,14 @@ page_start($p['title']);
 							<div class="list-group-item text-body-secondary small">No subprojects yet.</div>
 						<?php endif ?>
 						<?php foreach ($subprojects as $sub): ?>
-							<a class="list-group-item list-group-item-action d-flex align-items-center gap-2" href="/project/?id=<?= $sub['id'] ?>">
-								<?php type_badge($sub['type']) ?>
-								<?php ref_badge((int)$sub['id']) ?>
-								<?= h($sub['title']) ?>
-								<?php if ($sub['due_date']): ?>
-									<small class="text-body-secondary">due <?= h($sub['due_date']) ?></small>
+							<a class="list-group-item list-group-item-action d-flex align-items-center gap-2" href="/project/?id=<?= $sub->id ?>">
+								<?php type_badge($sub->type) ?>
+								<?php ref_badge((int)$sub->id) ?>
+								<?= h($sub->title) ?>
+								<?php if ($sub->due_date): ?>
+									<small class="text-body-secondary">due <?= h($sub->due_date) ?></small>
 								<?php endif ?>
-								<span class="badge text-bg-<?= TONE[$sub['status']] ?> ms-auto"><?= LABELS[$sub['status']] ?></span>
+								<span class="badge text-bg-<?= status_tone($sub->status) ?> ms-auto"><?= status_label($sub->status) ?></span>
 							</a>
 						<?php endforeach ?>
 					</div>
@@ -112,13 +137,13 @@ page_start($p['title']);
 				// rows already in the form plus one add or remove, and the endpoint answers with the
 				// form's contents. Nothing that comes back holds a form or a dialog, so both survive
 				// every swap and Bootstrap keeps hold of its modal.
-				$assigned = array_map('intval', $p['assignees'] ?? []);
+				$assigned = array_map('intval', $p->assignees ?? []);
 				$people_options = user_picker_options();
 				$board_ids = project_board_ids($id);
 				$board_options = board_picker_options();
 				?>
 				<div class="small text-body-secondary">Creator</div>
-				<div class="mb-3"><?php user_link((int)$p['creator_id'], $USERS[$p['creator_id']] ?? 'Unknown') ?></div>
+				<div class="mb-3"><?php user_link((int)$p->creator_id, $USERS[$p->creator_id] ?? 'Unknown') ?></div>
 
 				<div class="small text-body-secondary mb-1">Assignees</div>
 				<form id="people-form" class="mb-3">
@@ -230,16 +255,9 @@ page_start($p['title']);
 
 				<div class="card mb-3">
 					<div class="card-header fw-semibold">Status history</div>
-					<ul class="list-group list-group-flush small">
-						<?php foreach ($history as $entry): ?>
-							<li class="list-group-item">
-								<?= dt($entry['changed_at']) ?>:
-								<?= $entry['from_status'] ? LABELS[$entry['from_status']] . ' to ' : 'Created in ' ?><?= LABELS[$entry['to_status']] ?>
-							</li>
-						<?php endforeach ?>
-					</ul>
+					<?php status_history_list($id) ?>
 				</div>
-				<?php if (is_admin($me)): ?>
+				<?php if (has_role($me, Role::Admin)): ?>
 					<form method="post" action="/project/delete.php" onsubmit="return confirm('Delete this project, its subprojects, and all their comments?')">
 						<input type="hidden" name="id" value="<?= $id ?>">
 						<button class="btn btn-outline-danger">Delete project</button>

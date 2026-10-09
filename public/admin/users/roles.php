@@ -1,7 +1,7 @@
 <?php
 // Admin only: replaces a user's roles. Members can be made admins and vice versa.
 const SLATE_REQUIRE_LOGIN = true;
-require __DIR__ . '/../../src/bootstrap.php';
+require __DIR__ . '/../../../src/bootstrap.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     bad('POST only', 405);
@@ -26,9 +26,9 @@ foreach ((array)($_POST['roles'] ?? []) as $posted) {
 
 // Losing the last admin would leave nobody able to invite or promote anyone again, and
 // recovery needs SLATE_SETUP_KEY, which a plain install does not set.
-if (is_admin($target) && !in_array('admin', $wanted, true) && admin_count() <= 1) {
+if (has_role($target, Role::Admin) && !in_array(Role::Admin->value, $wanted, true) && admin_count() <= 1) {
     bad('This is the only admin. Promote someone else first.');
 }
 
 set_roles($target, $wanted);
-go('/users/');
+go('/admin/users/');

@@ -43,6 +43,6 @@ if (user_by_email($email)) {
     go('/setup/?error=' . rawurlencode('That email address already has an account'));
 }
 
-$id = create_user($name, $email, $password, ['admin', 'member']);
+$id = create_user($name, $email, $password, [Role::Admin->value]);
 login_user($id);
 go('/index.php');

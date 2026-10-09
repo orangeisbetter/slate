@@ -31,7 +31,7 @@ if (login_throttled($email)) {
 // and for the same reason as a wrong password: this form must not be a way of finding out which
 // addresses have accounts, or which of those are switched off.
 $user = user_by_email($email);
-if (!$user || !$user['active'] || !check_password($password, $user['password_hash'])) {
+if (!$user || !$user->active || !check_password($password, $user->password_hash)) {
     record_login_failure($email);
     login_refused($email);
 }
@@ -39,9 +39,9 @@ if (!$user || !$user['active'] || !check_password($password, $user['password_has
 clear_login_failures($email);
 
 // Pick up a stronger algorithm if PHP's default has moved on since the password was set.
-if (password_needs_rehash($user['password_hash'], PASSWORD_DEFAULT)) {
-    q('UPDATE users SET password_hash=? WHERE id=?', [hash_password($password), $user['id']]);
+if (password_needs_rehash($user->password_hash, PASSWORD_DEFAULT)) {
+    q('UPDATE users SET password_hash=? WHERE id=?', [hash_password($password), $user->id]);
 }
 
-login_user((int)$user['id']);
+login_user((int)$user->id);
 go($next);

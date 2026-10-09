@@ -84,7 +84,7 @@ a.badge.text-bg-light:hover { color: var(--bs-body-color); background-color: var
 
 /* The account page's panes. Bootstrap's .tab-pane is display:none and .tab-content > .active is
    display:block, which is the stylesheet half of a tab component whose script half this app does not
-   load -- so out of the box all three panes would be invisible. These four rules put that right using
+   load -- so out of the box both panes would be invisible. These four rules put that right using
    :target, which needs no script at all: every pane is in the document, the one the fragment names is
    shown, and :has() is what lets "nothing named yet" mean "show the first". */
 .account-tabs > .tab-content > .tab-pane { display: none; }
@@ -93,14 +93,28 @@ a.badge.text-bg-light:hover { color: var(--bs-body-color); background-color: var
 /* Something is named, so the default steps aside -- but not the named one, or clicking the first tab
    would hide it, since :first-child and :target would both match and the hiding rule is the heavier. */
 .account-tabs:has(.tab-pane:target) > .tab-content > .tab-pane:first-child:not(:target) { display: none; }
-/* Which tab is current is CSS's job, because the markup is identical for all three and the server
+/* Which tab is current is CSS's job, because the markup is identical for both and the server
    never sees the fragment. These are Bootstrap's own .nav-link.active values, so the tab that is open
    looks the same as it would with the script component. */
 .account-tabs:not(:has(.tab-pane:target)) .nav-link[href$="#tab-profile"],
 .account-tabs:has(#tab-profile:target) .nav-link[href$="#tab-profile"],
-.account-tabs:has(#tab-password:target) .nav-link[href$="#tab-password"],
-.account-tabs:has(#tab-access:target) .nav-link[href$="#tab-access"] {
+.account-tabs:has(#tab-signin:target) .nav-link[href$="#tab-signin"] {
   color: var(--bs-nav-tabs-link-active-color);
   background-color: var(--bs-nav-tabs-link-active-bg);
   border-color: var(--bs-nav-tabs-link-active-border-color);
+}
+
+/* The description flip card. The rendered text is the view, the textarea the edit state, and
+   the card holds one at a time. The switch is a hidden checkbox flipped by its labels, so it
+   navigates nowhere and scrolls nothing — a fragment link would jump, since there is nothing to
+   scroll a hidden pane to. Like the account panes above, no script is involved. The toggle stays
+   keyboard-reachable (visually hidden, never display:none), and the focus ring is forwarded onto
+   the button of the state currently shown. */
+.desc-card #desc-edit { display: none; }
+.desc-card:has(> .desc-toggle:checked) #desc-view { display: none; }
+.desc-card:has(> .desc-toggle:checked) #desc-edit { display: block; }
+.desc-card:has(> .desc-toggle:focus-visible:not(:checked)) #desc-view label.btn,
+.desc-card:has(> .desc-toggle:focus-visible:checked) #desc-edit label.btn {
+  outline: var(--bs-focus-ring-width, 2px) solid var(--bs-focus-ring-color, #0d6efd);
+  outline-offset: 2px;
 }

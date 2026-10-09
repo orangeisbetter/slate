@@ -29,7 +29,7 @@ if (!$p) {
 $q = trim((string)($_REQUEST['q'] ?? ''));
 
 if ($method === 'GET') {
-    $chosen = array_map('intval', $p['assignees'] ?? []);
+    $chosen = array_map('intval', $p->assignees ?? []);
     $options = user_picker_options($q ?: null);
     foreach ($options as $uid => $u):
         ?>
@@ -68,7 +68,7 @@ if (!isset($_SERVER['HTTP_HX_REQUEST'])) {
     go("/project/?id=$id");
 }
 
-$chosen = array_map('intval', project($id)['assignees'] ?? []);
+$chosen = array_map('intval', project($id)->assignees ?? []);
 // $all is for the rows, which have to show everyone assigned whatever the search box says.
 // $options is the dialog's list, which is the one the filter applies to.
 $all = user_picker_options();

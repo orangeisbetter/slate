@@ -74,7 +74,7 @@ probe = """
 <script>
 window.addEventListener('load', function () {
   var out = [];
-  ['tab-profile','tab-password','tab-access'].forEach(function (id) {
+  ['tab-profile','tab-signin'].forEach(function (id) {
     var el = document.getElementById(id);
     if (el && getComputedStyle(el).display !== 'none') { out.push('pane:' + id); }
   });
@@ -105,8 +105,8 @@ cp "$BOOTSTRAP" "$TMP/public/bootstrap.min.css"
 PROBE_PATH="/account/probe.html"
 
   # What the browser should show for each fragment: the one pane, the one tab marked current, and the
-  # three links resolved within the account directory.
-  LINKS="link:$PROBE_PATH#tab-profile link:$PROBE_PATH#tab-password link:$PROBE_PATH#tab-access"
+  # two links resolved within the account directory.
+  LINKS="link:$PROBE_PATH#tab-profile link:$PROBE_PATH#tab-signin"
 want() { echo "pane:tab-$1 tab:$1 $LINKS"; }
 
 probe() {
@@ -118,8 +118,7 @@ probe() {
 echo "== the account tabs, in a browser =="
 is "no fragment shows the first pane and marks the first tab" "$(want profile)" "$(probe '')"
 is "a fragment shows that pane and marks that tab" "$(want profile)" "$(probe '#tab-profile')"
-is "  ...for the password pane" "$(want password)" "$(probe '#tab-password')"
-is "  ...and for the access pane" "$(want access)" "$(probe '#tab-access')"
+is "  ...for the sign-in pane" "$(want signin)" "$(probe '#tab-signin')"
 
   # Each link must resolve inside this page's own directory, or clicking it navigates away and the
   # pane never appears. A path-carrying href would resolve to the same place, so this pins the bare

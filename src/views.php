@@ -2,9 +2,6 @@
 // HTML building blocks shared by the pages (Bootstrap 5.3 markup).
 require_once __DIR__ . '/lib.php';
 
-const TONE = ['draft' => 'light', 'backlog' => 'info', 'todo' => 'secondary', 'in_progress' => 'primary',
-              'blocked' => 'danger', 'review_ready' => 'info', 'review' => 'warning', 'done' => 'success',
-              'cancelled' => 'dark'];
 const TYPE_TONE = ['task' => 'secondary', 'bug' => 'danger', 'feature' => 'success', 'epic' => 'primary', 'research' => 'info'];
 
 // How many matches the header menu offers before it defers to the results page. Enough to cover a
@@ -25,8 +22,8 @@ function search_box(string $q = ''): void {
     ?>
     <div class="search-wrap">
         <form method="get" action="/search.php" role="search">
-            <input type="search" name="q" value="<?= h($q) ?>" class="form-control" autocomplete="off"
-                   placeholder="Search projects" aria-label="Search projects"
+            <input type="search" name="q" id="site-search" value="<?= h($q) ?>" class="form-control" autocomplete="off"
+                   placeholder="Search projects" aria-label="Search projects" aria-keyshortcuts="/"
                    hx-get="/search.php" hx-target="#search-menu" hx-swap="innerHTML"
                    hx-trigger="input changed delay:250ms">
         </form>
@@ -48,10 +45,10 @@ function search_box(string $q = ''): void {
             <div class="small text-body-secondary px-3 py-2">Nothing matches &ldquo;<?= h($q) ?>&rdquo;.</div>
         <?php else: ?>
             <?php foreach ($hits as $p): ?>
-                <a class="dropdown-item d-flex align-items-center gap-2" href="/project/?id=<?= (int)$p['id'] ?>">
-                    <?php ref_badge((int)$p['id']) ?>
-                    <span class="text-truncate"><?= h($p['title']) ?></span>
-                    <?php type_badge($p['type']) ?>
+                <a class="dropdown-item d-flex align-items-center gap-2" href="/project/?id=<?= (int)$p->id ?>">
+                    <?php ref_badge((int)$p->id) ?>
+                    <span class="text-truncate"><?= h($p->title) ?></span>
+                    <?php type_badge($p->type) ?>
                 </a>
             <?php endforeach ?>
             <?php if (count($hits) === SEARCH_MENU_LIMIT): ?>
@@ -113,17 +110,18 @@ function page_start(string $title, bool $nav = true): void {
                                 <li><a class="dropdown-item" href="/boards/">All boards</a></li>
                                 <?php foreach (boards() as $board): ?>
                                     <li>
-                                        <a class="dropdown-item" href="/board/?id=<?= (int)$board['id'] ?>">
-                                            <?= h($board['name']) ?>
-                                            <span class="badge text-bg-secondary ms-1"><?= (int)$board['project_count'] ?></span>
+                                        <a class="dropdown-item" href="/board/?id=<?= (int)$board->id ?>">
+                                            <?= h($board->name) ?>
+                                            <span class="badge text-bg-secondary ms-1"><?= (int)$board->project_count ?></span>
                                         </a>
                                     </li>
                                 <?php endforeach ?>
                             </ul>
                         </li>
                         <li><a class="nav-link" href="/list/">List</a></li>
-                        <?php if ($me): ?>
-                            <li><a class="nav-link" href="/users/">Users</a></li>
+                        <li><a class="nav-link" href="/activity/">Activity</a></li>
+                        <?php if ($me && has_role($me, Role::Admin)): ?>
+                            <li><a class="nav-link" href="/admin/">Admin</a></li>
                         <?php endif ?>
                     </ul>
                     <?php if ($me): ?>
@@ -135,16 +133,16 @@ function page_start(string $title, bool $nav = true): void {
                                 <ul class="dropdown-menu dropdown-menu-end">
                                     <li>
                                         <span class="dropdown-item-text">
-                                            <?= h($USERS[$me] ?? 'Unknown') ?><?= is_admin($me) ? ' (admin)' : '' ?>
+                                            <?= h($USERS[$me] ?? 'Unknown') ?><?= has_role($me, Role::Admin) ? ' (admin)' : '' ?>
                                         </span>
                                     </li>
                                     <li><hr class="dropdown-divider"></li>
                                     <li>
                                         <a class="dropdown-item" href="/account/">Your account</a>
                                     </li>
-                                    <?php if (is_admin($me)): ?>
+                                    <?php if (has_role($me, Role::Admin)): ?>
                                         <li>
-                                            <a class="dropdown-item" href="/users/">Manage users</a>
+                                            <a class="dropdown-item" href="/admin/">Admin</a>
                                         </li>
                                     <?php endif ?>
                                     <li><hr class="dropdown-divider"></li>
@@ -210,13 +208,17 @@ function ref_badge(int $id): void {
     <?php
 }
 
-// A reference to a person: the user list, anchored on their row. That list is open to any signed-in
-// user, so this needs no page of its own and no role check; when a real profile page replaces it,
-// the href here is the only thing that changes.
+// A reference to a person: the admin's user list, anchored on their row. That list is admin-only,
+// so only an admin gets the link — for anyone else the name is text rather than a href that would
+// land on a 403, and when a real profile page replaces the list, the href here is the only thing
+// that changes.
 function user_link(int $id, string $name): void {
-    ?>
-    <a class="link-quiet" href="/users/#user-<?= $id ?>"><?= h($name) ?></a>
-    <?php
+    global $me;
+    if (has_role($me, Role::Admin)) {
+        ?><a class="link-quiet" href="/admin/users/#user-<?= $id ?>"><?= h($name) ?></a><?php
+    } else {
+        ?><?= h($name) ?><?php
+    }
 }
 
 // Board names for a set of board ids, each linking to the board. Projects on no board are a normal
@@ -249,9 +251,9 @@ function board_labels(array $board_ids): void {
 function board_picker_options(?string $q = null): array {
     $out = [];
     foreach (boards() as $board) {
-        $n = (int)$board['project_count'];
-        $out[(int)$board['id']] = ['label' => $board['name'], 'sub' => "$n project" . ($n === 1 ? '' : 's'),
-                                   'search' => lower($board['name'])];
+        $n = (int)$board->project_count;
+        $out[(int)$board->id] = ['label' => $board->name, 'sub' => "$n project" . ($n === 1 ? '' : 's'),
+                                   'search' => lower($board->name)];
     }
     return filter_options($out, $q);
 }
@@ -283,14 +285,14 @@ function filter_options(array $options, ?string $q): array {
 // A subproject is the same card with its parent named on it — there is no wrapper and no second card,
 // which is what lets the parent be named here without the card needing a link inside a link.
 // $ctx carries the lookups render_board built once for the whole page, so this stays pure formatting.
-function board_card(array $project, string $status, array $ctx): void {
-    $id = (int)$project['id'];
+function board_card(Project $project, string $status, array $ctx): void {
+    $id = (int)$project->id;
     $today = gmdate('Y-m-d');
     $comments = $ctx['comments'][$id] ?? 0;
-    $overdue = $project['due_date'] && $project['due_date'] < $today && $status !== 'done';
-    $parent_id = (int)($project['parent_id'] ?? 0);
+    $overdue = $project->due_date && $project->due_date < $today && !status_is_finished($status);
+    $parent_id = (int)($project->parent_id ?? 0);
     ?>
-    <a class="card<?= $parent_id ? ' subproject' : '' ?> t-<?= h($project['type']) ?> text-body text-decoration-none shadow-sm"
+    <a class="card<?= $parent_id ? ' subproject' : '' ?> t-<?= h($project->type) ?> text-body text-decoration-none shadow-sm"
        href="/project/?id=<?= $id ?>" draggable="true" data-id="<?= $id ?>">
         <div class="card-body p-2">
             <?php if ($parent_id): ?>
@@ -300,11 +302,11 @@ function board_card(array $project, string $status, array $ctx): void {
                       // whichever project the card is. ?>
                 <div class="small text-body-secondary mb-1">Subproject of&nbsp;<?php ref_badge($parent_id) ?><?= h($ctx['titles'][$parent_id] ?? '') ?></div>
             <?php endif ?>
-            <div class="fw-medium"><?php ref_badge($id) ?><?= h($project['title']) ?></div>
+            <div class="fw-medium"><?php ref_badge($id) ?><?= h($project->title) ?></div>
             <div class="d-flex align-items-center gap-2 small text-body-secondary mt-1">
-                <?php type_badge($project['type']); ?>
-                <?php if ($project['due_date']): ?>
-                    <span class="<?= $overdue ? 'text-danger fw-semibold' : '' ?>">Due <?= h($project['due_date']) ?></span>
+                <?php type_badge($project->type); ?>
+                <?php if ($project->due_date): ?>
+                    <span class="<?= $overdue ? 'text-danger fw-semibold' : '' ?>">Due <?= h($project->due_date) ?></span>
                 <?php endif ?>
                 <?php if (isset($ctx['sub_counts'][$id])): ?>
                     <span><?= $ctx['subs_done'][$id] ?? 0 ?>/<?= $ctx['sub_counts'][$id] ?> subprojects done</span>
@@ -331,7 +333,7 @@ function board_card(array $project, string $status, array $ctx): void {
 // after a drag, so any heading or filter placed inside would be wiped on the first drop.
 function render_board(?int $board_id = null): void {
     global $USERS;
-    $all = q('SELECT * FROM projects ORDER BY updated_at DESC')->fetchAll();
+    $all = q('SELECT * FROM projects ORDER BY updated_at DESC')->fetchAll(PDO::FETCH_CLASS | PDO::FETCH_PROPS_LATE, Project::class);
 
     $assignees = [];             // project id => user ids
     foreach (q('SELECT * FROM project_assignees') as $row) {
@@ -347,18 +349,18 @@ function render_board(?int $board_id = null): void {
     // Counted over every project, not just the ones on this board: a subproject sitting on
     // another board, or on none at all, is still part of its parent.
     foreach ($all as $project) {
-        $titles[$project['id']] = $project['title'];
-        if (!$project['parent_id']) {
+        $titles[$project->id] = $project->title;
+        if (!$project->parent_id) {
             continue;
         }
-        $sub_counts[$project['parent_id']] = ($sub_counts[$project['parent_id']] ?? 0) + 1;
-        $subs_done[$project['parent_id']] = ($subs_done[$project['parent_id']] ?? 0) + ($project['status'] === 'done' ? 1 : 0);
+        $sub_counts[$project->parent_id] = ($sub_counts[$project->parent_id] ?? 0) + 1;
+        $subs_done[$project->parent_id] = ($subs_done[$project->parent_id] ?? 0) + (status_is_finished($project->status) ? 1 : 0);
     }
 
     if ($board_id !== null) {
         $on_board = array_flip(array_map('intval',
             q('SELECT project_id FROM project_boards WHERE board_id=?', [$board_id])->fetchAll(PDO::FETCH_COLUMN)));
-        $all = array_values(array_filter($all, fn($project) => isset($on_board[$project['id']])));
+        $all = array_values(array_filter($all, fn($project) => isset($on_board[$project->id])));
     }
 
     $ctx = ['assignees' => $assignees, 'comments' => $comment_counts, 'titles' => $titles,
@@ -369,8 +371,8 @@ function render_board(?int $board_id = null): void {
     // being on the screen: the boards page says how many that would hide before it is saved, and
     // the list view is where those projects are still reachable.
     $modes = board_panel_modes($board_id);
-    foreach (PANEL_ORDER as $status) {
-        $items = array_filter($all, fn($project) => $project['status'] === $status);
+    foreach (panel_order() as $status) {
+        $items = array_filter($all, fn($project) => $project->status === $status);
         if ($modes[$status] === 'hidden') {
             continue;
         }
@@ -383,8 +385,8 @@ function render_board(?int $board_id = null): void {
         <section data-status="<?= $status ?>">
             <div class="card board-col h-100">
                 <div class="card-header d-flex align-items-center gap-2">
-                    <?= LABELS[$status] ?>
-                    <span class="badge rounded-pill text-bg-<?= TONE[$status] ?>"><?= count($items) ?></span>
+                    <?= status_label($status) ?>
+                    <span class="badge rounded-pill text-bg-<?= status_tone($status) ?>"><?= count($items) ?></span>
                 </div>
                 <div class="card-body d-flex flex-column gap-2">
                     <?php foreach ($items as $project):
@@ -415,12 +417,12 @@ function render_board(?int $board_id = null): void {
  *
  * @param array|null $b The board, or null when there is not one yet and this is the create form.
  */
-function board_form_fields(?array $b): void {
+function board_form_fields(?Board $b): void {
     ?>
     <div class="mb-3">
         <label class="form-label" for="edit_bn">Name</label>
         <input class="form-control" id="edit_bn" name="name" required maxlength="80"
-               value="<?= h($b['name'] ?? '') ?>">
+               value="<?= h($b?->name ?? '') ?>">
     </div>
     <div>
         <label class="form-label" for="edit_bd">
@@ -431,8 +433,115 @@ function board_form_fields(?array $b): void {
               // in a value attribute, which is why the tags are on one line — a newline straight
               // after <textarea> would become part of the value — and it is escaped as text, the
               // same treatment a project's description already gets. */ ?>
-        <textarea class="form-control" id="edit_bd" name="description" maxlength="200" rows="3"><?= h($b['description'] ?? '') ?></textarea>
+        <textarea class="form-control" id="edit_bd" name="description" maxlength="200" rows="3"><?= h($b?->description ?? '') ?></textarea>
     </div>
+    <?php
+}
+
+
+/**
+ * The label, slug, tone and finished flag a status is created or edited with.
+ *
+ * Drawn in two places — the dialog's fragment and the page the button's href falls back to — so
+ * the field names cannot drift apart, like board_form_fields() above.
+ *
+ * The slug is offered only when creating. It is what is stored in projects.status, status_log and
+ * board_panels, so letting it change later would orphan every row that points at it; the edit form
+ * shows it as text and says why it is not a field.
+ *
+ * @param ?array $s The status row, or null when there is not one yet.
+ */
+function status_form_fields(?array $s): void {
+    ?>
+    <div class="mb-3">
+        <label class="form-label" for="status_label">Label</label>
+        <input class="form-control" id="status_label" name="label" required maxlength="40"
+               value="<?= h($s['label'] ?? '') ?>">
+    </div>
+    <?php if ($s === null): ?>
+        <div class="mb-3">
+            <label class="form-label" for="status_slug">
+                Slug <span class="text-body-secondary">(optional — derived from the label)</span>
+            </label>
+            <input class="form-control" id="status_slug" name="slug" maxlength="40" pattern="[a-z][a-z0-9_]*">
+            <div class="form-text">What is stored on every project with this status. It cannot be changed later.</div>
+        </div>
+    <?php else: ?>
+        <div class="mb-3">
+            <span class="form-label d-block">Slug</span>
+            <div class="font-monospace"><?= h($s['slug']) ?></div>
+            <div class="form-text">What is stored on every project with this status, so it cannot be changed.</div>
+        </div>
+    <?php endif ?>
+    <div class="mb-3">
+        <label class="form-label" for="status_tone">Badge colour</label>
+        <select class="form-select" id="status_tone" name="tone">
+            <?php foreach (STATUS_TONES as $tone): ?>
+                <option value="<?= $tone ?>"<?= $tone === ($s['tone'] ?? 'secondary') ? ' selected' : '' ?>>
+                    <?= ucfirst($tone) ?>
+                </option>
+            <?php endforeach ?>
+        </select>
+    </div>
+    <div class="form-check">
+        <input class="form-check-input" type="checkbox" name="is_finished" value="1" id="status_finished"
+            <?= !empty($s['is_finished']) ? 'checked' : '' ?>>
+        <label class="form-check-label" for="status_finished">Finished</label>
+        <div class="form-text">Counts as finished: out of the open total, the assigned list and the list view's default filter.</div>
+    </div>
+    <?php
+}
+
+
+/**
+ * The email, name and role an invite is minted for.
+ *
+ * Drawn in two places — the invite dialog's fragment and the invite page the button's href falls
+ * back to — so the field names cannot drift apart.
+ */
+function invite_form_fields(): void {
+    $role_options = all_roles();
+    ?>
+    <div class="mb-3">
+        <label class="form-label" for="invite_email">Email</label>
+        <input class="form-control" id="invite_email" name="email" type="email" required>
+    </div>
+    <div class="mb-3">
+        <label class="form-label" for="invite_name">Name <span class="text-body-secondary">(optional)</span></label>
+        <input class="form-control" id="invite_name" name="name">
+    </div>
+    <div>
+        <span class="form-label d-block">Roles</span>
+        <?php foreach ($role_options as $rid => $label): ?>
+            <div class="form-check form-check-inline m-0">
+                <input class="form-check-input" type="checkbox" name="roles[]"
+                       value="<?= (int)$rid ?>" id="invite_role<?= (int)$rid ?>">
+                <label class="form-check-label" for="invite_role<?= (int)$rid ?>"><?= h($label) ?></label>
+            </div>
+        <?php endforeach ?>
+    </div>
+    <?php
+}
+
+
+/**
+ * The checkboxes that pick one user's roles.
+ *
+ * Drawn in two places — the roles dialog's fragment and the roles page the button's href falls
+ * back to — so the two cannot disagree about which roles there are to pick.
+ */
+function roles_form_fields(int $user_id): void {
+    $current = roles($user_id);
+    $slug_map = q('SELECT id, slug FROM roles')->fetchAll(PDO::FETCH_KEY_PAIR);   // id => slug
+    ?>
+    <?php foreach (all_roles() as $rid => $label): ?>
+        <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="roles[]"
+                   value="<?= (int)$rid ?>" id="role<?= (int)$rid ?>-<?= $user_id ?>"
+                   <?= in_array($slug_map[$rid], $current, true) ? 'checked' : '' ?>>
+            <label class="form-check-label" for="role<?= (int)$rid ?>-<?= $user_id ?>"><?= h($label) ?></label>
+        </div>
+    <?php endforeach ?>
     <?php
 }
 
@@ -452,13 +561,13 @@ function board_form_fields(?array $b): void {
 function board_panel_rows(int $id, array $modes, array $counts): void {
     ?>
     <div class="picker-list">
-        <?php foreach (PANEL_ORDER as $status): $n = $counts[$status] ?? 0; ?>
+        <?php foreach (panel_order() as $status): $n = $counts[$status] ?? 0; ?>
             <?php // Plain rows, no card around each one: a name and its answer, in a list. A border
                   // and a fill per row made nine little boxes out of what is really one list. The
                   // picker-list wrapper is what keeps the list from growing past the dialog. ?>
             <div class="d-flex align-items-center gap-2 mb-1">
                 <label class="text-truncate" for="panel-select-<?= $id ?>-<?= $status ?>">
-                    <?= LABELS[$status] ?>
+                    <?= status_label($status) ?>
                     <?php if ($n): ?>
                         <span class="small text-body-secondary"><?= $n ?></span>
                     <?php endif ?>
@@ -484,8 +593,8 @@ function board_panel_rows(int $id, array $modes, array $counts): void {
 
 
 function render_comments(int $project_id): void {
-    global $USERS;
-    $comments = q('SELECT * FROM comments WHERE project_id=? ORDER BY id', [$project_id])->fetchAll();
+    $comments = Comment::getAllForProject($project_id);
+    global $USERS, $me;
 
     if (!$comments) {
         ?>
@@ -494,17 +603,129 @@ function render_comments(int $project_id): void {
         return;
     }
 
-foreach ($comments as $comment) {
-          $author = (int)$comment['author_id'];
-          ?>
-          <div class="border rounded bg-body-tertiary p-2 mb-2">
-              <div class="small text-body-secondary">
-                  <?php user_link($author, $USERS[$author] ?? 'Unknown') ?>, <?= dt($comment['created_at']) ?>
-              </div>
-            <div><?= nl2br(h($comment['body'])) ?></div>
+    // One existence lookup for every reference on the page, not one per comment: projects
+    // hard-delete, so a link to an id that no longer exists stays plain text.
+    $ids = [];
+    foreach ($comments as $comment) {
+        foreach (ref_ids_in_text($comment->body) as $id) {
+            $ids[$id] = true;
+        }
+    }
+    $exists = $ids ? array_flip(existing_project_ids(array_keys($ids))) : [];
+
+    foreach ($comments as $comment) {
+        $author = (int)$comment->author_id;
+        $can_change = can_edit_comment($me ?? null, $comment->author_id);
+        ?>
+        <div class="border rounded bg-body-tertiary p-2 mb-2" id="comment-<?= (int)$comment->id ?>">
+            <div class="small text-body-secondary d-flex align-items-center gap-2">
+                <span><?php user_link($author, $USERS[$author] ?? 'Unknown') ?>, <?= dt($comment->created_at) ?><?php if (!empty($comment->edited_at)): ?>, edited <?= dt($comment->edited_at) ?><?php endif ?></span>
+                <?php if ($can_change): ?>
+                    <span class="ms-auto d-flex gap-2">
+                        <a href="/project/comment_edit.php?id=<?= (int)$comment->id ?>">Edit</a>
+                        <form method="post" action="/project/comment_delete.php" class="d-inline"
+                              onsubmit="return confirm('Delete this comment?')"
+                              hx-post="/project/comment_delete.php" hx-target="#cms" hx-swap="innerHTML">
+                            <input type="hidden" name="comment_id" value="<?= (int)$comment->id ?>">
+                            <button type="submit" class="btn btn-link btn-sm p-0 align-baseline">Delete</button>
+                        </form>
+                    </span>
+                <?php endif ?>
+            </div>
+        <div><?= rich_text($comment->body, $exists) ?></div>
         </div>
         <?php
     }
+}
+
+// Project references: writing "see #12" links #12 to /project/?id=12, the same way the header
+// search already understands #12. One renderer for both surfaces it covers — comments and
+// project descriptions — so the two agree, and the markdown of card #44 will live here too
+// rather than bolted on beside it.
+//
+// A reference is a # preceded by start-of-text or a non-word character, so ABC#12 is not one.
+// Inside backtick code (spans and fenced blocks) #12 is code and stays plain text; code itself
+// renders exactly as it does today, since marking it up is #44's job, not this one's.
+
+/** Every #NN id a text mentions, deduplicated. Existence is asked separately. */
+function ref_ids_in_text(string $text): array {
+    if (!str_contains($text, '#')) {
+        return [];
+    }
+    preg_match_all('/(?:^|[^\w])#(\d+)/', $text, $m);
+    $ids = array_unique(array_map('intval', $m[1]));
+    sort($ids);
+    return array_values($ids);
+}
+
+/** Which of those ids still name a project. One query for the lot. */
+function existing_project_ids(array $ids): array {
+    $ids = array_values(array_unique(array_map('intval', $ids)));
+    if (!$ids) {
+        return [];
+    }
+    $in = implode(',', array_fill(0, count($ids), '?'));
+    return array_map('intval', q("SELECT id FROM projects WHERE id IN ($in)", $ids)->fetchAll(PDO::FETCH_COLUMN));
+}
+
+/**
+ * Escaped text with live references linked, then line breaks kept. $exists maps
+ * id => anything for the ids known to name a project; left out, it is looked up.
+ */
+function rich_text(string $text, ?array $exists = null): string {
+    if ($exists === null) {
+        $ids = ref_ids_in_text($text);
+        $exists = $ids ? array_flip(existing_project_ids($ids)) : [];
+    }
+    // Code first: a fenced block or backtick span is escaped and left alone, links included.
+    $parts = preg_split('/(```.*?```|`[^`\n]*`)/s', $text, -1, PREG_SPLIT_DELIM_CAPTURE);
+    $out = '';
+    foreach ($parts as $i => $part) {
+        if ($part === '') {
+            continue;
+        }
+        if ($i % 2 === 1) {
+            $out .= h($part);
+            continue;
+        }
+        $out .= preg_replace_callback('/(^|[^\w])#(\d+)/', function ($m) use ($exists) {
+            $id = (int)$m[2];
+            if (!isset($exists[$id])) {
+                return $m[0];
+            }
+            return $m[1] . '<a href="/project/?id=' . $id . '">#' . $id . '</a>';
+        }, h($part));
+    }
+    return nl2br($out);
+}
+
+// The "Last updated" line under the project form. It carries an id so the htmx endpoints that
+// touch a project (status change, comment) can refresh it out-of-band: both bump updated_at,
+// and leaving the old line in place is the stale-page bug. The board drag is the reference
+// pattern — swap what changed, not nothing.
+function last_updated_line(Project $p): void {
+    ?>
+    <p class="text-body-secondary small mb-4" id="last-updated">Created <?= dt($p->created_at) ?>. Last updated <?= dt($p->updated_at) ?>.</p>
+    <?php
+}
+
+// The status history panel's list. One helper because the project page and the status-change
+// endpoint draw the same rows: two copies would drift, which is what left the panel stale.
+function status_history_list(int $project_id): void {
+    global $USERS;
+    $history = q('SELECT * FROM status_log WHERE project_id=? ORDER BY id', [$project_id])->fetchAll(PDO::FETCH_CLASS | PDO::FETCH_PROPS_LATE, StatusLogEntry::class);
+    ?>
+    <ul class="list-group list-group-flush small" id="status-history-list">
+        <?php foreach ($history as $entry): ?>
+            <li class="list-group-item">
+                <?= dt($entry->changed_at) ?>:
+                <?= $entry->from_status ? status_label($entry->from_status) . ' to ' : 'Created in ' ?><?= status_label($entry->to_status) ?><?php
+                $actor = $entry->changed_by ?? null;
+                if ($actor !== null): ?> by <?php user_link((int)$actor, $USERS[(int)$actor] ?? 'Unknown') ?><?php endif ?>
+            </li>
+        <?php endforeach ?>
+    </ul>
+    <?php
 }
 
 // Create/edit form. $action is the script that receives it, named from the app root because every
@@ -513,7 +734,9 @@ foreach ($comments as $comment) {
 // Assignees are only chosen here when creating; on the project page they have their own panel.
 // $boards only matters when creating: an existing project's boards are edited from its own
 // page, in the Boards panel, so the edit form leaves them alone.
-  function project_form(array $project, ?int $id, array $boards = [], string $action = '/new/add.php'): void {
+// $with_description is false on the project page, where the description has its own flip card
+// next door: posting it from two forms would let one blank the other's save.
+  function project_form(?Project $project, ?int $id, array $boards = [], string $action = '/new/add.php', bool $with_description = true): void {
       // The create form's two pickers. Nothing here is saved until the form is posted, so there is
     // no row for the server to send back: this is the one place a row is built in the browser.
     // They are marked data-draft-picker and the Create button submits them like any other field.
@@ -534,27 +757,29 @@ foreach ($comments as $comment) {
     <?php endif ?>
     <div class="col-12">
         <label class="form-label" for="title">Title</label>
-        <input class="form-control" id="title" name="title" required value="<?= h($project['title']) ?>">
+        <input class="form-control" id="title" name="title" required value="<?= h($project?->title ?? '') ?>">
     </div>
+    <?php if ($with_description): ?>
     <div class="col-12">
         <label class="form-label" for="desc">Description</label>
-        <textarea class="form-control" id="desc" name="description" rows="6"><?= h($project['description']) ?></textarea>
+        <textarea class="form-control" id="desc" name="description" rows="6"><?= h($project?->description ?? '') ?></textarea>
     </div>
+    <?php endif ?>
     <div class="col-6 col-md-4">
         <label class="form-label" for="type">Type</label>
         <select class="form-select" id="type" name="type">
             <?php foreach (TYPES as $type => $label): ?>
-                <option value="<?= $type ?>"<?= $type === $project['type'] ? ' selected' : '' ?>><?= $label ?></option>
+                <option value="<?= $type ?>"<?= $type === ($project?->type ?? '"task"') ? ' selected' : '' ?>><?= $label ?></option>
             <?php endforeach ?>
         </select>
     </div>
     <div class="col-6 col-md-4">
         <label class="form-label" for="start">Start date</label>
-        <input type="date" class="form-control" id="start" name="start_date" value="<?= h($project['start_date']) ?>">
+        <input type="date" class="form-control" id="start" name="start_date" value="<?= h($project?->start_date ?? '') ?>">
     </div>
     <div class="col-6 col-md-4">
         <label class="form-label" for="due">Due date</label>
-        <input type="date" class="form-control" id="due" name="due_date" value="<?= h($project['due_date']) ?>">
+        <input type="date" class="form-control" id="due" name="due_date" value="<?= h($project?->due_date ?? '') ?>">
       </div>
   <?php foreach ($draft as $key => $d): $taken = array_map('intval', $d['chosen']); ?>
     <div class="col-12" data-draft-picker="<?= h($key) ?>" data-draft-field="<?= h($d['field']) ?>">

@@ -9,7 +9,15 @@ $token = (string)($_GET['token'] ?? $_POST['token'] ?? '');
 $invite = invite_by_token($token);
 // Only worth working out when there is an invite: an unknown token renders the refusal below and
 // never reaches the role, and asking a null array for a key is a warning that used to go unnoticed.
-$role = $invite ? (all_roles()[$invite['role_id']] ?? 'Member') : null;
+$role_labels = [];
+if ($invite) {
+    $labels_by_slug = q('SELECT slug, label FROM roles')->fetchAll(PDO::FETCH_KEY_PAIR);
+    foreach ($invite->roleSlugs() as $slug) {
+        if (isset($labels_by_slug[$slug])) {
+            $role_labels[] = $labels_by_slug[$slug];
+        }
+    }
+}
 $error = $_GET['error'] ?? null;
 
 page_start('Accept invitation');
@@ -25,11 +33,11 @@ page_start('Accept invitation');
                 </p>
                 <a class="btn btn-outline-secondary" href="/login/">Back to sign in</a>
             <?php else: ?>
-                <h1 class="h4 mb-1">Join as <?= h($role) ?></h1>
+                <h1 class="h4 mb-1"><?= $role_labels ? 'Join as ' . h(implode(', ', $role_labels)) : 'Join Slate' ?></h1>
                 <p class="text-body-secondary small">
-                    Invited by <?= h($invite['created_by_name'] ?? 'an administrator') ?>
-                    for <?= h($invite['email']) ?>.
-                    Expires <?= dt($invite['expires_at']) ?>.
+                    Invited by <?= h($invite->created_by_name ?? 'an administrator') ?>
+                    for <?= h($invite->email) ?>.
+                    Expires <?= dt($invite->expires_at) ?>.
                 </p>
                 <?php if ($error): ?>
                     <div class="alert alert-danger"><?= h($error) ?></div>
@@ -39,7 +47,7 @@ page_start('Accept invitation');
                     <div class="mb-3">
                         <label class="form-label" for="name">Name</label>
                         <input class="form-control" id="name" name="name" required autofocus
-                               autocomplete="name" value="<?= h($invite['name'] ?? '') ?>">
+                               autocomplete="name" value="<?= h($invite->name ?? '') ?>">
                     </div>
                     <div class="mb-3">
                         <label class="form-label" for="password">Password</label>

@@ -101,17 +101,35 @@ if ($slack_id === '') {
     go('/login/');
 }
 
+// Optional workspace gate: with SLACK_ALLOWED_TEAM_ID set, only members of that workspace
+// can sign in or link, so Slack itself keeps external people out rather than invite-only
+// accounts alone. Checked here, before linking and before sign-in, so all three paths
+// (link, login, signup) pass through it. A response naming no workspace is refused rather
+// than waved through, since waving it through would be the gate left open.
+$allowed_team = trim((string)getenv('SLACK_ALLOWED_TEAM_ID'));
+if ($allowed_team !== '') {
+    $team_id = slack_team_id($userinfo, is_array($token) ? $token : []);
+    if ($team_id === '') {
+        $_SESSION['login_error'] = 'Could not verify your Slack workspace. Contact an administrator.';
+        go('/login/');
+    }
+    if ($team_id !== $allowed_team) {
+        $_SESSION['login_error'] = 'Slack sign-in is limited to members of a specific workspace.';
+        go('/login/');
+    }
+}
+
 $next = isset($_SESSION['slack_next']) ? (string)$_SESSION['slack_next'] : '/index.php';
 unset($_SESSION['slack_next']);
 
 if ($linking_to > 0) {
     $linking_user = user($linking_to);
-    if (!$linking_user || !$linking_user['active']) {
+    if (!$linking_user || !$linking_user->active) {
         $_SESSION['login_error'] = 'That account has been deactivated.';
         go('/login/');
     }
     $existing_slack = user_by_slack_id($slack_id);
-    if ($existing_slack && (int)$existing_slack['id'] !== $linking_to) {
+    if ($existing_slack && (int)$existing_slack->id !== $linking_to) {
         $_SESSION['login_error'] = 'This Slack account is already linked to another account.';
         go('/login/');
     }
@@ -122,11 +140,11 @@ if ($linking_to > 0) {
 
 $user = user_by_slack_id($slack_id);
 if ($user) {
-    if (!$user['active']) {
+    if (!$user->active) {
         $_SESSION['login_error'] = 'That account has been deactivated.';
         go('/login/');
     }
-    login_user((int)$user['id']);
+    login_user((int)$user->id);
     go($next);
 }
 
@@ -152,7 +170,7 @@ if (!$allow_signup) {
     go('/login/');
 }
 
-$role_slugs = ['member'];
+$role_slugs = [];
 try {
     $id = create_user_from_slack($name, $email !== '' ? $email : null, $slack_id, $role_slugs);
     login_user($id);

@@ -2,27 +2,26 @@
 // Shared database and helpers. Lives outside the web root (public/) so it can't be
 // requested directly. The schema lives in db/*.sql and is applied by bin/migrate.php,
 // which this file deliberately does not do for itself.
-const LABELS = ['draft' => 'Draft', 'backlog' => 'Backlog', 'todo' => 'To do', 'in_progress' => 'In progress',
-                'blocked' => 'Blocked', 'review' => 'In review', 'done' => 'Done', 'cancelled' => 'Cancelled', 'review_ready' => 'Ready for review'];
-// Every status a project can hold, in the order work moves through them. A board draws one column
-// per status it has a panel for, so this is the list of columns a board can possibly have. It is
-// deliberately not LABELS order: review_ready was appended to LABELS when it was added, but it sits
-// before review here, because that is the order the two actually happen in.
-const PANEL_ORDER = ['draft', 'backlog', 'blocked', 'todo', 'in_progress', 'review_ready', 'review',
-                     'done', 'cancelled'];
+// Every tone a status badge can wear, as Bootstrap's contextual classes. An admin picks one per
+// status at /admin/statuses/; this is the list of what can be picked, so a class nothing knows how
+// to draw cannot reach the database.
+const STATUS_TONES = ['secondary', 'primary', 'success', 'danger', 'warning', 'info', 'light', 'dark'];
 // How a board treats each of its panels. 'required' draws the column even when it is empty,
 // 'optional' draws it only once something is in it, 'hidden' never draws it.
 const PANEL_MODES = ['required' => 'Always', 'optional' => 'Only when it has projects', 'hidden' => 'Never'];
 // What a board that has never been configured gets: the three columns most work actually moves
 // through. Every other status is off until an admin asks for it, which is a display choice and not
-// a change to any project — see board_panel_modes().
-const DEFAULT_BOARD_PANELS = ['todo', 'in_progress', 'done'];
+// a change to any project — see board_panel_modes(). Which of these still exist is asked of the
+// database, so a deleted status is not a column nothing can draw.
+const DEFAULT_PANEL_SLUGS = ['todo', 'in_progress', 'done'];
 const TYPES = ['task' => 'Task', 'bug' => 'Bug', 'feature' => 'Feature', 'epic' => 'Epic', 'research' => 'Research'];
 
 const MIN_PASSWORD = 10;              // characters
 const SESSION_LIFETIME = 14 * 86400;  // two weeks
 const LOGIN_LIMIT = 8;                // failed attempts allowed per window
 const LOGIN_WINDOW = 900;             // ...within this many seconds
+
+require_once __DIR__ . '/models.php';
 
 @mkdir(__DIR__ . '/../data', 0775, true);
 $db = new PDO('sqlite:' . __DIR__ . '/../data/board.db');
@@ -42,7 +41,7 @@ function db_is_current(): bool {
     $tables = array_column($db->query("SELECT name FROM sqlite_master WHERE type='table'")->fetchAll(), 'name');
     $columns = array_column($db->query('PRAGMA table_info(users)')->fetchAll(), 'name');
     $needed_tables = ['users', 'projects', 'comments', 'status_log', 'roles', 'user_roles', 'invites',
-                      'boards', 'project_boards'];
+                      'boards', 'project_boards', 'project_statuses'];
     return count(array_intersect($needed_tables, $tables)) === count($needed_tables)
         && count(array_intersect(['email', 'password_hash', 'active'], $columns)) === 3;
 }
@@ -53,7 +52,7 @@ function q(string $sql, array $args = []): PDOStatement {
     $statement->execute($args);
     return $statement;
 }
-function h($s): string {
+function h(string $s): string {
     return htmlspecialchars((string)$s, ENT_QUOTES);
 }
 
@@ -83,6 +82,79 @@ function chars(string $s): int {
     return function_exists('mb_strlen') ? mb_strlen($s) : strlen($s);
 }
 
+// ---- project statuses ----
+
+/**
+ * Every status, in the order work moves through them: a board draws one column per status it has
+ * a panel for, so this is the list of columns a board can possibly have. Loaded once per request
+ * from project_statuses — the LABELS, PANEL_ORDER and LABELS_FINISHED constants this used to be
+ * are the seed of that table, not a second source of truth.
+ */
+function &status_cache(): ?array {
+    static $rows = null;
+    return $rows;
+}
+function statuses(): array {
+    $rows = &status_cache();
+    if ($rows === null) {
+        $rows = q('SELECT * FROM project_statuses ORDER BY sort_order, id')->fetchAll(PDO::FETCH_ASSOC);
+    }
+    return $rows;
+}
+/** Called by the endpoints that write statuses, so a request that changes one sees the change. */
+function status_cache_clear(): void {
+    $rows = &status_cache();
+    $rows = null;
+}
+/** One status by its slug, or null when there is no such row. */
+function status_row(string $slug): ?array {
+    foreach (statuses() as $row) {
+        if ($row['slug'] === $slug) {
+            return $row;
+        }
+    }
+    return null;
+}
+/**
+ * Whether a status with this slug exists at all. A project's status always has a row behind it:
+ * deleting a status is refused while any project is on it, so this is the whole of the check the
+ * endpoints that set a status need to make.
+ */
+function status_exists(string $slug): bool {
+    return status_row($slug) !== null;
+}
+/** Every slug, in the order the columns are drawn — deliberately not label order. */
+function panel_order(): array {
+    return array_column(statuses(), 'slug');
+}
+/** What a status is called. Falls back to the slug, which only a status_log entry can outlive. */
+function status_label(string $slug): string {
+    return status_row($slug)['label'] ?? $slug;
+}
+/** The tone its badge wears, falling back to the plain one for the same reason. */
+function status_tone(string $slug): string {
+    return status_row($slug)['tone'] ?? 'secondary';
+}
+/** The statuses that count as finished: excluded from open work and the list's default filter. */
+function finished_slugs(): array {
+    return array_column(array_filter(statuses(), fn($row) => $row['is_finished']), 'slug');
+}
+function status_is_finished(string $slug): bool {
+    return (bool)(status_row($slug)['is_finished'] ?? false);
+}
+/**
+ * What an unconfigured board gets, minus anything since deleted: a default naming a status that
+ * is gone is a default with a hole in it, not a column nothing can draw.
+ */
+function default_board_panels(): array {
+    return array_values(array_intersect(DEFAULT_PANEL_SLUGS, panel_order()));
+}
+/** The slug a new status is stored as: lowercase, runs of anything else folded to one underscore. */
+function status_slug_from_label(string $label): string {
+    $slug = preg_replace('/[^a-z0-9]+/i', '_', trim($label));
+    return strtolower(trim((string)$slug, '_'));
+}
+
 function dt(string $s): string {
     return gmdate('M j, Y H:i', strtotime($s)) . ' UTC';
 }
@@ -99,19 +171,21 @@ function bad(string $msg, int $code = 400): never {
     echo $msg;
     exit;
 }
-function validDate($d): ?string {
+function validDate(mixed $d): ?string {
     $d = (string)$d;
     if ($d !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $d)) {
         bad('Dates must be YYYY-MM-DD');
     }
     return $d ?: null;
 }
-function project(int $id): ?array {
-    $p = q('SELECT * FROM projects WHERE id=?', [$id])->fetch();
+function project(int $id): ?Project {
+    $stmt = q('SELECT * FROM projects WHERE id=?', [$id]);
+    $stmt->setFetchMode(PDO::FETCH_CLASS | PDO::FETCH_PROPS_LATE, Project::class);
+    $p = $stmt->fetch();
     if (!$p) {
         return null;
     }
-    $p['assignees'] = array_map('intval', q('SELECT user_id FROM project_assignees WHERE project_id=?', [$id])->fetchAll(PDO::FETCH_COLUMN));
+    $p->assignees = array_map('intval', q('SELECT user_id FROM project_assignees WHERE project_id=?', [$id])->fetchAll(PDO::FETCH_COLUMN));
     return $p;
 }
 function setAssignees(int $id, array $ids): void {
@@ -120,8 +194,8 @@ function setAssignees(int $id, array $ids): void {
         q('INSERT OR IGNORE INTO project_assignees VALUES(?,?)', [$id, $u]);
     }
 }
-function logStatus(int $id, ?string $from, string $to): void {
-    q('INSERT INTO status_log(project_id,from_status,to_status,changed_at) VALUES(?,?,?,?)', [$id, $from, $to, gmdate('c')]);
+function logStatus(int $id, ?string $from, string $to, ?int $by = null): void {
+    q('INSERT INTO status_log(project_id,from_status,to_status,changed_at,changed_by) VALUES(?,?,?,?,?)', [$id, $from, $to, gmdate('c'), $by]);
 }
 
 /**
@@ -136,7 +210,7 @@ function create_project_from_post(int $creator): never {
         bad('Title is required');
     }
     $st = $_POST['status'] ?? 'todo';
-    if (!isset(LABELS[$st])) {
+    if (!status_exists($st)) {
         bad('Invalid status');
     }
     $type = $_POST['type'] ?? 'task';
@@ -155,7 +229,7 @@ function create_project_from_post(int $creator): never {
     $id = (int)$db->lastInsertId();
     setAssignees($id, (array)($_POST['as'] ?? []));
     set_project_boards($id, (array)($_POST['boards'] ?? []), $creator);
-    logStatus($id, null, $st);
+    logStatus($id, null, $st, $creator);
     if ($parent) {                             // adding underneath a project counts as touching it
         q('UPDATE projects SET updated_at=? WHERE id=?', [$now, $parent]);
     }
@@ -168,6 +242,7 @@ function create_project_from_post(int $creator): never {
  * by something other than that form can still move a project and record it in the history.
  */
 function update_project_from_post(): never {
+    global $me;
     $title = trim($_POST['title'] ?? '');
     if ($title === '') {
         bad('Title is required');
@@ -177,21 +252,24 @@ function update_project_from_post(): never {
     if (!$existing) {
         bad('Project not found', 404);
     }
-    $st = $_POST['status'] ?? $existing['status'];
-    if (!isset(LABELS[$st])) {
+    $st = $_POST['status'] ?? $existing->status;
+    if (!status_exists($st)) {
         bad('Invalid status');
     }
-    $type = $_POST['type'] ?? $existing['type'];
+    $type = $_POST['type'] ?? $existing->type;
     if (!isset(TYPES[$type])) {
         bad('Invalid type');
     }
     $start = validDate($_POST['start_date'] ?? '');
     $due = validDate($_POST['due_date'] ?? '');
     $now = gmdate('c');
+    // The project page edits the description through its own flip card, so the field is absent
+    // there: an absent field keeps what is stored, or every title edit would blank the text.
+    $desc = array_key_exists('description', $_POST) ? ($_POST['description'] ?? '') : $existing->description;
     q('UPDATE projects SET title=?,description=?,status=?,type=?,start_date=?,due_date=?,updated_at=? WHERE id=?',
-      [$title, $_POST['description'] ?? '', $st, $type, $start, $due, $now, $id]);
-    if ($st !== $existing['status']) {
-        logStatus($id, $existing['status'], $st);
+      [$title, $desc, $st, $type, $start, $due, $now, $id]);
+    if ($st !== $existing->status) {
+        logStatus($id, $existing->status, $st, $me ?? null);
     }
     go("/project/?id=$id");
 }
@@ -208,24 +286,54 @@ function user_exists(int $id): bool {
     return (bool)$db->query('SELECT 1 FROM users WHERE id=' . (int)$id)->fetchColumn();
 }
 
-function user(int $id): ?array {
+function user(int $id): ?User {
     $stmt = q('SELECT * FROM users WHERE id=?', [$id]);
+    $stmt->setFetchMode(PDO::FETCH_CLASS | PDO::FETCH_PROPS_LATE, User::class);
     return $stmt->fetch() ?: null;
 }
 
-function user_by_email(string $email): ?array {
+function user_by_email(string $email): ?User {
     $stmt = q('SELECT * FROM users WHERE email=?', [strtolower(trim($email))]);
+    $stmt->setFetchMode(PDO::FETCH_CLASS | PDO::FETCH_PROPS_LATE, User::class);
     return $stmt->fetch() ?: null;
 }
 
-function user_by_slack_id(string $slack_id): ?array {
+function user_by_slack_id(string $slack_id): ?User {
     $stmt = q('SELECT * FROM users WHERE slack_id=?', [trim($slack_id)]);
+    $stmt->setFetchMode(PDO::FETCH_CLASS | PDO::FETCH_PROPS_LATE, User::class);
     return $stmt->fetch() ?: null;
 }
 
 /** Link a Slack account to an existing user by id. */
 function link_slack(int $user_id, string $slack_id): void {
     q('UPDATE users SET slack_id=? WHERE id=?', [trim($slack_id), $user_id]);
+}
+
+// The workspace a Slack OIDC response belongs to, or '' when it names none. Slack carries it
+// as the https://slack.com/team_id claim on userInfo; older shapes use team_id or a team
+// object, and the token response can carry one too. First hit wins, so a response holding
+// several that disagree still resolves to one — the userInfo claim, which is the documented one.
+function slack_team_id(array $userinfo, array $token = []): string {
+    $team = $userinfo['team'] ?? null;
+    if (is_array($team) && isset($team['id'])) {
+        $userinfo['team_id'] = $team['id'];
+    }
+    $team = $token['team'] ?? null;
+    if (is_array($team) && isset($team['id'])) {
+        $token['team_id'] = $team['id'];
+    }
+    foreach ([$userinfo['https://slack.com/team_id'] ?? null, $userinfo['team_id'] ?? null,
+              $token['team_id'] ?? null] as $candidate) {
+        if (is_string($candidate) && trim($candidate) !== '') {
+            return trim($candidate);
+        }
+    }
+    return '';
+}
+
+/** Take the Slack match back off an account. Callers hold the guard: see unlink_slack.php. */
+function unlink_slack(int $user_id): void {
+    q('UPDATE users SET slack_id=NULL WHERE id=?', [$user_id]);
 }
 
 
@@ -258,7 +366,7 @@ function check_password(string $password, ?string $hash): bool {
     return is_string($hash) && $hash !== '' && password_verify($password, $hash);
 }
 
-function create_user(string $name, string $email, string $password, array $role_slugs = ['member']): int {
+function create_user(string $name, string $email, string $password, array $role_slugs = []): int {
     global $db;
     $stmt = $db->prepare('INSERT INTO users(name,email,password_hash) VALUES(?,?,?)');
     $stmt->execute([$name, strtolower(trim($email)), hash_password($password)]);
@@ -266,7 +374,7 @@ function create_user(string $name, string $email, string $password, array $role_
     set_roles($id, $role_slugs);
     return $id;
 }
-function create_user_from_slack(string $name, ?string $email, string $slack_id, array $role_slugs = ['member']): int {
+function create_user_from_slack(string $name, ?string $email, string $slack_id, array $role_slugs = []): int {
     global $db;
     $stmt = $db->prepare('INSERT INTO users(name,email,slack_id) VALUES(?,?,?)');
     $stmt->execute([$name, $email ? strtolower(trim($email)) : null, trim($slack_id)]);
@@ -293,8 +401,22 @@ function roles(int $user_id): array {
              [$user_id])->fetchAll(PDO::FETCH_COLUMN);
 }
 
-function is_admin(?int $user_id): bool {
-    return $user_id ? in_array('admin', roles((int)$user_id), true) : false;
+/** Every role the app knows about, keyed to the slug stored in roles.slug. */
+enum Role: string {
+    case Admin = 'admin';
+}
+
+function has_role(?int $user_id, Role $role): bool {
+    return $user_id !== null && in_array($role->value, roles($user_id), true);
+}
+
+// A comment can be changed by its author or by an admin, so a typo can be fixed
+// and a wrong statement taken back without handing every reader an edit button.
+function can_edit_comment(?int $user_id, ?int $author_id): bool {
+    if ($user_id === null || $user_id === 0) {
+        return false;
+    }
+    return $author_id === $user_id || has_role($user_id, Role::Admin);
 }
 
 /**
@@ -310,7 +432,7 @@ function admin_count(bool $active_only = false): int {
     if ($active_only) {
         $sql .= ' AND u.active=1';
     }
-    return (int)q($sql, ['admin'])->fetchColumn();
+    return (int)q($sql, [Role::Admin->value])->fetchColumn();
 }
 
 /** Every user with their roles, for the users page. can_login is false for name-only accounts. */
@@ -321,36 +443,43 @@ function users_list(): array {
               LEFT JOIN user_roles ur ON ur.user_id = u.id
               LEFT JOIN roles r ON r.id = ur.role_id
               GROUP BY u.id
-              ORDER BY u.active, u.name')->fetchAll();
+              ORDER BY u.active, u.name')->fetchAll(PDO::FETCH_CLASS | PDO::FETCH_PROPS_LATE, User::class);
 }
 
 // ---- invites ----
 
 /** Returns the token so the caller can show the link. Valid for two weeks, single use. */
-function new_invite(string $email, ?string $name, ?int $role_id, int $created_by): string {
+function new_invite(string $email, ?string $name, array $role_slugs, int $created_by): string {
     global $db;
     $token = bin2hex(random_bytes(24));
-    $stmt = $db->prepare('INSERT INTO invites(token,email,name,role_id,created_by,created_at,expires_at)
+    // Comma-separated slugs: no separate invite_roles table for what is a handful of
+    // strings — and only read whole when the invite is accepted or listed.
+    $stmt = $db->prepare('INSERT INTO invites(token,email,name,roles,created_by,created_at,expires_at)
                           VALUES(?,?,?,?,?,?,?)');
-    $stmt->execute([$token, strtolower(trim($email)), $name, $role_id, $created_by,
+    $stmt->execute([$token, strtolower(trim($email)), $name, implode(',', $role_slugs), $created_by,
                     gmdate('c'), gmdate('c', time() + SESSION_LIFETIME)]);
     return $token;
 }
 
 /** The invite behind a token, or null if it is unknown, already used or expired. */
-function invite_by_token(string $token): ?array {
-    $invite = q('SELECT * FROM invites WHERE token=?', [$token])->fetch();
-    if (!$invite || $invite['accepted_at']) {
+function invite_by_token(string $token): ?Invite {
+    $stmt = q('SELECT * FROM invites WHERE token=?', [$token]);
+    $stmt->setFetchMode(PDO::FETCH_CLASS | PDO::FETCH_PROPS_LATE, Invite::class);
+    $invite = $stmt->fetch();
+    if (!$invite || $invite->accepted_at) {
         return null;
     }
-    return strtotime($invite['expires_at']) < time() ? null : $invite;
+    if (strtotime($invite->expires_at) < time()) {
+        return null;
+    }
+    return $invite;
 }
 
 function invites_list(): array {
     return q('SELECT i.*, u.name AS created_by_name FROM invites i
               LEFT JOIN users u ON u.id = i.created_by
               WHERE i.accepted_at IS NULL
-              ORDER BY i.created_at DESC')->fetchAll();
+              ORDER BY i.created_at DESC')->fetchAll(PDO::FETCH_CLASS | PDO::FETCH_PROPS_LATE, Invite::class);
 }
 
 function revoke_invite(string $token): void {
@@ -361,17 +490,19 @@ function revoke_invite(string $token): void {
 
 /** Every board, oldest first, with how many projects sit on it. */
 function boards(): array {
-    return q('SELECT b.id, b.name, b.description, b.created_at,
-                     (SELECT COUNT(*) FROM project_boards pb WHERE pb.board_id=b.id) AS project_count
-              FROM boards b ORDER BY b.id')->fetchAll();
+    return q('SELECT b.id, b.name, b.description, b.created_by, b.created_at,
+                      (SELECT COUNT(*) FROM project_boards pb WHERE pb.board_id=b.id) AS project_count
+               FROM boards b ORDER BY b.id')->fetchAll(PDO::FETCH_CLASS | PDO::FETCH_PROPS_LATE, Board::class);
 }
 
-function board(int $id): ?array {
-    return q('SELECT * FROM boards WHERE id=?', [$id])->fetch() ?: null;
+function board(int $id): ?Board {
+    $stmt = q('SELECT * FROM boards WHERE id=?', [$id]);
+    $stmt->setFetchMode(PDO::FETCH_CLASS | PDO::FETCH_PROPS_LATE, Board::class);
+    return $stmt->fetch();
 }
 
 /**
- * How a board treats each of its panels: every PANEL_ORDER status mapped to one of PANEL_MODES.
+ * How a board treats each of its panels: every status mapped to one of PANEL_MODES.
  *
  * Absent rows mean the default rather than "never", so a board nobody has configured still gets the
  * three columns most work moves through. That is the whole reason for the default: without it, every
@@ -382,15 +513,15 @@ function board(int $id): ?array {
  */
 function board_panel_modes(?int $board_id): array {
     $modes = [];
-    foreach (PANEL_ORDER as $status) {
-        $modes[$status] = in_array($status, DEFAULT_BOARD_PANELS, true) ? 'required' : 'hidden';
+    foreach (panel_order() as $status) {
+        $modes[$status] = in_array($status, default_board_panels(), true) ? 'required' : 'hidden';
     }
     if ($board_id === null) {
         return $modes;
     }
     foreach (q('SELECT status, mode FROM board_panels WHERE board_id=?', [$board_id]) as $row) {
         // A status that is not a column any more is ignored rather than added: the columns are
-        // PANEL_ORDER, so a row left behind by a rename must not bring an old column back.
+        // panel_order(), so a row left behind by a delete must not bring an old column back.
         if (isset($modes[$row['status']]) && isset(PANEL_MODES[$row['mode']])) {
             $modes[$row['status']] = $row['mode'];
         }
@@ -416,13 +547,15 @@ function board_status_counts(): array {
 }
 
 /**
- * Projects whose title or description matches $q, subprojects included, most recently updated first.
+ * Projects matching $q, subprojects included, most recently updated first.
  *
- * The query is split into keywords on whitespace, and every keyword has to match at least one of the
- * two fields. Order and the gap between words do not matter, so "power bench" and "bench supply" both
- * find "Bench Power Supply": a term only has to be somewhere in the title or the description. That is
- * what "matches" means here, not rank: the rows stay in updated order, so two projects matching the
- * same words come back newest first rather than best first.
+ * A project is found by its title, its description, its comments, or the names and
+ * addresses of its assignees — whichever carries the words. The query is split into
+ * keywords on whitespace, and every keyword has to match at least one of those places.
+ * Order and the gap between words do not matter, so "power bench" and "bench supply" both
+ * find "Bench Power Supply": a term only has to be somewhere in the project. That is
+ * what "matches" means here, not rank: the rows stay in updated order, so two projects
+ * matching the same words come back newest first rather than best first.
  *
  * $limit of 0 means every match, which is what the results page wants; the header box asks for a
  * handful instead. It has to be a missing clause rather than LIMIT 0, which asks for no rows at all
@@ -449,7 +582,13 @@ function search_projects(string $q, int $limit = 0): array {
     $args = [];
     foreach (preg_split('/\s+/', $q, -1, PREG_SPLIT_NO_EMPTY) as $term) {
         $like = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $term) . '%';
-        $groups[] = "(title LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\')";
+        $groups[] = "(title LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\'"
+            . " OR id IN (SELECT project_id FROM comments WHERE body LIKE ? ESCAPE '\\')"
+            . " OR id IN (SELECT pa.project_id FROM project_assignees pa JOIN users u ON u.id = pa.user_id"
+            . " WHERE u.name LIKE ? ESCAPE '\\' OR u.email LIKE ? ESCAPE '\\'))";
+        $args[] = $like;
+        $args[] = $like;
+        $args[] = $like;
         $args[] = $like;
         $args[] = $like;
     }
@@ -466,7 +605,7 @@ function search_projects(string $q, int $limit = 0): array {
     }
     return q("SELECT * FROM projects
               WHERE $where
-              ORDER BY updated_at DESC, id DESC" . $cap, $args)->fetchAll();
+              ORDER BY updated_at DESC, id DESC" . $cap, $args)->fetchAll(PDO::FETCH_CLASS | PDO::FETCH_PROPS_LATE, Project::class);
 }
 
 /** Board ids for one project. Membership is independent per project, subprojects included. */
@@ -481,8 +620,7 @@ function boards_by_project(array $project_ids): array {
         return [];
     }
     $in = implode(',', array_fill(0, count($project_ids), '?'));
-    $rows = q("SELECT project_id, board_id FROM project_boards WHERE project_id IN ($in) ORDER BY board_id",
-              $project_ids)->fetchAll();
+    $rows = q("SELECT project_id, board_id FROM project_boards WHERE project_id IN ($in) ORDER BY board_id", $project_ids)->fetchAll();
     $map = [];
     foreach ($rows as $row) {
         $map[$row['project_id']][] = (int)$row['board_id'];

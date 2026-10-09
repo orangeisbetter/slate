@@ -24,10 +24,8 @@ foreach ($names as $i => $name) {
 }
 
 $admin = $db->query("SELECT id FROM roles WHERE slug='admin'")->fetchColumn();
-$member = $db->query("SELECT id FROM roles WHERE slug='member'")->fetchColumn();
 $link = $db->prepare('INSERT INTO user_roles(user_id,role_id) VALUES(?,?)');
 $link->execute([$ids[$names[0]], $admin]);
-$link->execute([$ids[$names[0]], $member]);
 
 // A little history and a couple of assignees, so the board and list have something to show.
 // The epic goes on General (migration 003 puts it there) plus a second board, and a subproject

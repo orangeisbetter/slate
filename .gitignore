@@ -8,3 +8,8 @@
 *.sqlite
 *.sqlite3
 /.env
+
+# The test suite's own environment and bytecode.
+/tests/.venv/
+/tests/__pycache__/
+/.pytest_cache/

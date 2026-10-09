@@ -61,7 +61,7 @@ serve() {   # serve <port> <docroot> [env assignment...]
 echo "== migrate =="
 mkdir -p "$TMP/data"
 cp -r "$ROOT/src" "$ROOT/public" "$ROOT/db" "$ROOT/bin" "$TMP/"
-is "fresh migrate applies every file" "6" "$(cd "$TMP" && php bin/migrate.php | grep -cE '^ *\+ ')"
+is "fresh migrate applies every file" "7" "$(cd "$TMP" && php bin/migrate.php | grep -cE '^ *\+ ')"
 is "re-running applies nothing" "0" "$(cd "$TMP" && php bin/migrate.php | grep -cE '^ *\+ ')"
 php "$ROOT/tests/schema.php" "$TMP/data/board.db" >"$TMP/schema.out" 2>&1
 is "schema check passes against a fresh database" "0" "$?"
@@ -97,7 +97,7 @@ is "a malformed address is refused" "302" \
 is "setup creates the admin" "302" \
   "$(post /setup/accept_setup.php 'name=Ada Admin&email=ada@example.com&password=correcthorse1&password2=correcthorse1')"
 is "  ...landing on the board" "/index.php" "$(loc)"
-is "the account has both roles" "admin,member" \
+is "the account has the admin role" "admin" \
   "$(sq "select group_concat(r.slug) from roles r join user_roles ur on ur.role_id=r.id where ur.user_id=1")"
 is "the password is hashed, not stored" "1" \
   "$(sq "select case when password_hash like '\$2%' then 1 else 0 end from users where id=1")"
@@ -184,18 +184,18 @@ has "  ...holding who you are" "Ada Admin (admin)"
 has "  ...and signing out from inside it" '<button class="dropdown-item" type="submit">Sign out</button>'
 
 echo "== the only admin cannot be stranded =="
-is "demoting the only admin is refused" "400" "$(post /users/roles.php 'user_id=1&roles[]=2')"
+is "demoting the only admin is refused" "400" "$(post /users/roles.php 'user_id=1')"
 has "  ...with an explanation" "only admin"
-is "and the role survived" "admin,member" \
+is "and the role survived" "admin" \
   "$(sq "select group_concat(r.slug) from roles r join user_roles ur on ur.role_id=r.id where ur.user_id=1")"
 
 echo "== invites =="
 is "an existing address cannot be invited" "400" \
-  "$(post /users/invite.php 'email=ada@example.com&role_id=2')"
+  "$(post /users/invite.php 'email=ada@example.com&roles[]=1')"
 has "  ...saying why" "already has an account"
-is "a malformed address is rejected" "400" "$(post /users/invite.php 'email=not-an-email&role_id=2')"
-is "an unknown role is rejected" "400" "$(post /users/invite.php 'email=g@example.com&role_id=999')"
-is "an invite is created" "302" "$(post /users/invite.php 'email=grace@example.com&name=Grace&role_id=2')"
+is "a malformed address is rejected" "400" "$(post /users/invite.php 'email=not-an-email&roles[]=1')"
+is "an unknown role is rejected" "400" "$(post /users/invite.php 'email=g@example.com&roles[]=999')"
+is "an invite is created" "302" "$(post /users/invite.php 'email=grace@example.com&name=Grace')"
 invite_url="$(loc)"
 token="${invite_url##*invite=}"
 is "  ...as a member" "/users/?invite=$token" "$invite_url"
@@ -207,7 +207,7 @@ is "it is listed as pending" "grace@example.com" \
 echo "== accepting an invite =="
 rm -f "$JAR"
 is "the invite page renders while signed out" "200" "$(get "/invite/?token=$token")"
-has "  ...naming the role" "Join as Member"
+has "  ...naming the role" "Join Slate"
 # A signed-out visitor gets no toggler, so the collapsible region is forced open instead of
 # hiding the links behind a hamburger that is not there.
 hasnt "  ...nor a toggler" "navbar-toggler"
@@ -223,7 +223,7 @@ is "an invite is accepted" "302" \
   "$(post /invite/accept_invite.php "token=$token&name=Grace Hopper&password=hopperpassword1&password2=hopperpassword1")"
 is "  ...signing the new user in" "/index.php" "$(loc)"
 grace_id="$(sq "select id from users where email='grace@example.com'")"
-is "the new user is a member" "member" \
+is "the new user has no special role" "" \
   "$(sq "select group_concat(r.slug) from roles r join user_roles ur on ur.role_id=r.id where ur.user_id=$grace_id")"
 is "the invite is marked used" "1" \
   "$(sq "select count(*) from invites where token='$token' and accepted_at is not null")"
@@ -235,7 +235,7 @@ get /users/ >/dev/null
 has "a member sees the user list" "Ada Admin"
 hasnt "  ...but not the invite form" "Invite someone"
 hasnt "  ...nor the pending invites" "Pending invitations"
-is "a member cannot mint an invite" "403" "$(post /users/invite.php 'email=z@example.com&role_id=2')"
+is "a member cannot mint an invite" "403" "$(post /users/invite.php 'email=z@example.com&roles[]=1')"
 is "a member cannot change roles" "403" "$(post /users/roles.php 'user_id=1&roles[]=1')"
 
 echo "== boards: admins manage them, members file work =="
@@ -330,14 +330,14 @@ is "and the board is closed again" "302" "$(get /index.php)"
 
 echo "== promotion =="
 post /login/login.php 'email=ada@example.com&password=correcthorse1' >/dev/null
-is "an admin promotes the member" "302" "$(post /users/roles.php "user_id=$grace_id&roles[]=1&roles[]=2")"
-is "  ...giving both roles" "admin,member" \
+is "an admin promotes the member" "302" "$(post /users/roles.php "user_id=$grace_id&roles[]=1")"
+is "  ...giving the admin role" "admin" \
   "$(sq "select group_concat(r.slug) from roles r join user_roles ur on ur.role_id=r.id where ur.user_id=$grace_id")"
 is "a bogus role is ignored" "302" "$(post /users/roles.php "user_id=$grace_id&roles[]=999")"
 is "  ...leaving no roles" "" \
   "$(sq "select group_concat(r.slug) from roles r join user_roles ur on ur.role_id=r.id where ur.user_id=$grace_id")"
-post /users/roles.php "user_id=$grace_id&roles[]=2" >/dev/null
-is "both roles can be restored" "302" "$(post /users/roles.php "user_id=$grace_id&roles[]=1&roles[]=2")"
+post /users/roles.php "user_id=$grace_id" >/dev/null
+is "the role can be restored" "302" "$(post /users/roles.php "user_id=$grace_id&roles[]=1")"
 
 echo "== the promoted member sees the admin tools =="
 rm -f "$JAR"
@@ -348,7 +348,7 @@ has "  ...the invite form" "Invite someone"
 has "  ...and their new badge" "Grace Hopper (admin)"
 
 echo "== revoking =="
-post /users/invite.php 'email=alan@example.com&role_id=2' >/dev/null
+post /users/invite.php 'email=alan@example.com&roles[]=1' >/dev/null
 token2="$(loc)"; token2="${token2##*invite=}"
 is "revoking redirects" "302" "$(post /users/revoke_invite.php "token=$token2")"
 is "the revoked link is dead" "200" "$(get "/invite/?token=$token2")"
@@ -451,13 +451,13 @@ echo "== who is offered the other accounts =="
 post_as "$grace_jar" /login/login.php 'email=grace@example.com&password=hopperpassword2' >/dev/null
 rm -f "$JAR"
 post /login/login.php 'email=ada@example.com&password=correcthorse1' >/dev/null
-post /users/roles.php "user_id=$grace_id&roles[]=2" >/dev/null
+post /users/roles.php "user_id=$grace_id" >/dev/null
 get_as "$grace_jar" '/account/#tab-access' >/dev/null
 hasnt "a member is not offered the other accounts" ">Manage users</a>"
-post /users/roles.php "user_id=$grace_id&roles[]=1&roles[]=2" >/dev/null
+post /users/roles.php "user_id=$grace_id&roles[]=1" >/dev/null
 get_as "$grace_jar" '/account/#tab-access' >/dev/null
 has "  ...but an admin is" ">Manage users</a>"
-post /users/roles.php "user_id=$grace_id&roles[]=2" >/dev/null
+post /users/roles.php "user_id=$grace_id" >/dev/null
 is "the section leaves one admin, as the next one needs" "1" \
   "$(sq "select count(*) from user_roles ur join roles r on r.id=ur.role_id where r.slug='admin'")"
 
@@ -473,7 +473,7 @@ has "  ...rather than guessed at" "Say whether the account should be active"
 # off has no admin powers of its own to muddy what is being checked.
 post_as "$grace_jar" /login/login.php 'email=grace@example.com&password=hopperpassword2' >/dev/null
 is "a deactivated account is not what is signed in here" "/index.php" "$(loc)"
-post /users/roles.php "user_id=$grace_id&roles[]=2" >/dev/null
+post /users/roles.php "user_id=$grace_id" >/dev/null
 
 is "a member cannot switch an account off" "403" \
   "$(post_as "$grace_jar" /users/set_active.php 'user_id=1&active=0')"
@@ -519,7 +519,7 @@ is "  ...and it signs in again" "/index.php" "$(loc)"
 echo "== the last admin handing over =="
 # An admin who is leaving promotes a colleague first and then switches their own account off, which
 # is only possible because self-deactivation is allowed once somebody else can still sign in.
-post /users/roles.php "user_id=$grace_id&roles[]=1&roles[]=2" >/dev/null
+post /users/roles.php "user_id=$grace_id&roles[]=1" >/dev/null
 is "an admin switches themselves off" "302" "$(post /users/set_active.php 'user_id=1&active=0')"
 is "  ...which takes effect on the very next request" "302" "$(get /)"
 is "  ...sending them back to sign in" "/login/?next=%2F" "$(loc)"
@@ -543,25 +543,25 @@ post_h() { local path="$1" data="$2"; shift 2
              -X POST --data "$data" "$@" "$BASE$path"; }
 invited_before="$(sq 'select count(*) from invites')"
 is "a cross-site request is refused" "403" \
-  "$(post_h /users/invite.php 'email=csrf1@example.com&role_id=2' -H 'Sec-Fetch-Site: cross-site')"
+  "$(post_h /users/invite.php 'email=csrf1@example.com&roles[]=1' -H 'Sec-Fetch-Site: cross-site')"
 has "  ...and says so" "Cross-site request refused"
 is "a sibling subdomain is refused as well" "403" \
-  "$(post_h /users/invite.php 'email=csrf2@example.com&role_id=2' -H 'Sec-Fetch-Site: same-site')"
+  "$(post_h /users/invite.php 'email=csrf2@example.com&roles[]=1' -H 'Sec-Fetch-Site: same-site')"
 is "a forged Origin is refused" "403" \
-  "$(post_h /users/invite.php 'email=csrf3@example.com&role_id=2' -H 'Origin: https://evil.example')"
+  "$(post_h /users/invite.php 'email=csrf3@example.com&roles[]=1' -H 'Origin: https://evil.example')"
 is "  ...and so is our own host as the front of another" "403" \
-  "$(post_h /users/invite.php 'email=csrf4@example.com&role_id=2' -H "Origin: $BASE.evil.example")"
+  "$(post_h /users/invite.php 'email=csrf4@example.com&roles[]=1' -H "Origin: $BASE.evil.example")"
 is "  ...and not one of them invited anybody" "$invited_before" "$(sq 'select count(*) from invites')"
 is "our own Origin is allowed" "302" \
-  "$(post_h /users/invite.php 'email=csrf5@example.com&role_id=2' -H "Origin: $BASE")"
+  "$(post_h /users/invite.php 'email=csrf5@example.com&roles[]=1' -H "Origin: $BASE")"
 is "  ...and the invitation exists" "csrf5@example.com" \
   "$(sq "select email from invites where email='csrf5@example.com'")"
 is "Sec-Fetch-Site same-origin is allowed" "302" \
-  "$(post_h /users/invite.php 'email=csrf6@example.com&role_id=2' -H 'Sec-Fetch-Site: same-origin')"
+  "$(post_h /users/invite.php 'email=csrf6@example.com&roles[]=1' -H 'Sec-Fetch-Site: same-origin')"
 is "a matching Referer stands in for Origin" "302" \
-  "$(post_h /users/invite.php 'email=csrf7@example.com&role_id=2' -H "Referer: $BASE/users/")"
+  "$(post_h /users/invite.php 'email=csrf7@example.com&roles[]=1' -H "Referer: $BASE/users/")"
 is "a request with no such headers at all is allowed" "302" \
-  "$(post /users/invite.php 'email=csrf8@example.com&role_id=2')"
+  "$(post /users/invite.php 'email=csrf8@example.com&roles[]=1')"
 is "a reading request is never refused" "200" \
   "$(curl -sS -o "$BODY" -D "$HDR" -w '%{http_code}' -c "$JAR" -b "$JAR" \
      -H 'Sec-Fetch-Site: cross-site' "$BASE/list/")"
@@ -579,7 +579,7 @@ is "a wrong key is refused" "302" \
   "$(key_post 'setup_key=nope&name=S&email=s@example.com&password=longenough1&password2=longenough1' /setup/accept_setup.php)"
 is "the right key creates an admin" "302" \
   "$(key_post 'setup_key=secret-key&name=Second Admin&email=second@example.com&password=longenough1&password2=longenough1' /setup/accept_setup.php)"
-is "  ...with the admin role" "admin,member" \
+is "  ...with the admin role" "admin" \
   "$(sq "select group_concat(r.slug) from roles r join user_roles ur on ur.role_id=r.id
           where ur.user_id=(select id from users where email='second@example.com')")"
 

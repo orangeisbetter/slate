@@ -29,16 +29,16 @@ if (strlen($password) < MIN_PASSWORD) {
 if ($password !== (string)($_POST['password2'] ?? '')) {
     go('/invite/?token=' . rawurlencode($token) . '&error=' . rawurlencode('Passwords do not match'));
 }
-if (user_by_email($invite['email'])) {
+if (user_by_email($invite->email)) {
     go('/invite/?token=' . rawurlencode($token)
        . '&error=' . rawurlencode('That email address already has an account'));
 }
 
-$slugs = $invite['role_id'] && isset(all_roles()[$invite['role_id']])
-    ? [q('SELECT slug FROM roles WHERE id=?', [$invite['role_id']])->fetchColumn()]
-    : ['member'];
+// Only roles that still exist are granted: one may have been removed since the invite went out.
+$known = array_values(q('SELECT slug FROM roles')->fetchAll(PDO::FETCH_COLUMN));
+$slugs = array_values(array_intersect($invite->roleSlugs(), $known));
 
-$id = create_user($name, $invite['email'], $password, $slugs);
+$id = create_user($name, $invite->email, $password, $slugs);
 q('UPDATE invites SET accepted_at=? WHERE token=?', [gmdate('c'), $token]);
 
 login_user($id);

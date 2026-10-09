@@ -5,7 +5,7 @@
 const SLATE_REQUIRE_LOGIN = true;
 require __DIR__ . '/../../src/bootstrap.php';
 
-$admin = is_admin($me);
+$admin = has_role($me, Role::Admin);
 $boards = boards();
 // No panel settings are read here: what columns a board has is the Panels dialog's business, and
 // this page has no need to know. That is one query the page used to make and no longer does.
@@ -58,17 +58,17 @@ page_start('Boards');
             </thead>
             <tbody>
                 <?php foreach ($boards as $board): ?>
-                    <?php $id = (int)$board['id']; ?>
+                    <?php $id = (int)$board->id; ?>
                     <tr id="board-<?= $id ?>">
                         <td>
                             <a class="fw-semibold text-decoration-none d-block" href="/board/?id=<?= $id ?>">
-                                <?= h($board['name']) ?>
+                                <?= h($board->name) ?>
                             </a>
-                            <?php if ($board['description']): ?>
-                                <span class="text-body-secondary small"><?= h($board['description']) ?></span>
+                            <?php if ($board->description): ?>
+                                <span class="text-body-secondary small"><?= h($board->description) ?></span>
                             <?php endif ?>
                         </td>
-                        <td class="text-end"><?= (int)$board['project_count'] ?></td>
+                        <td class="text-end"><?= (int)$board->project_count ?></td>
                         <?php if ($admin): ?>
                             <td class="text-end text-nowrap">
                                 <!-- Each is a pair: href for the page, hx-get for the fragment that
