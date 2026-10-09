@@ -177,13 +177,15 @@ function page_end(): void {
              as the window and this collects the leftover height above itself. On a page too full to
              have any, it collapses to nothing and the gap above the rule is the content's own bottom
              padding, which every page already has. -->
-        <!--<footer class="border-top mt-auto">
+        <footer class="border-top mt-auto">
             <div class="page-wide mx-auto px-3 px-md-4 py-3 d-flex flex-wrap align-items-center gap-3 small text-body-secondary">
-                <span class="fw-medium text-body">Slate</span>
-                <span>a small project tracker</span>
-                <span class="ms-auto">No tracking. Assets load from a CDN.</span>
+                <!-- The footer names the repository and nowhere else to ask. With no mail transport
+                     and no contact address, its issues page is the app's only contact point, and a
+                     privacy policy would be a claim about one install rather than about this code. -->
+                <a class="link-quiet" href="https://github.com/orangeisbetter/slate">Slate on GitHub</a>
+                <a class="link-quiet" href="https://github.com/orangeisbetter/slate/issues">Report an issue or request a feature</a>
             </div>
-        </footer>-->
+        </footer>
     <?php endif ?>
     </body>
     </html>

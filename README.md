@@ -504,10 +504,11 @@ Deliberately not built yet, and worth deciding on before this grows:
   matched, but not fuzzily: `bnch` finds nothing.
 - **No CSRF tokens**, by the design described above. The header check covers current browsers; a
   token in the form is the belt-and-braces option if you need one.
-- **No LICENCE, and no privacy policy page.** The footer says only what is true of this app: nothing is
-  collected or sent anywhere by the app itself, and the assets come from a CDN. There is no licence
-  file to name, no contact address to link and no policy text to publish, so none of the three is
-  invented to fill the space. All three are small additions: a licence is one file, and a contact
-  address would fit the environment variables above.
+- **No LICENCE, and no privacy policy page.** The footer names the repository and its issues page,
+  the only contact points, since the app has no mail transport and no contact address, and says
+  nothing else. There is no licence file to name; a licence is one file to add. A privacy policy is
+  deliberately not published at all: it would be a claim about one deployment rather than about this
+  code, and whoever runs the app decides what is logged and where, so any text shipped here could be
+  made false by an install that differs from this one.
 - **Single-node assumptions.** SQLite in WAL mode on a local disk, one app instance. Do not point two
   servers at one database file, and do not put the database on NFS.
