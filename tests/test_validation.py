@@ -1,6 +1,6 @@
-"""Bad input and wrong methods. One table, as in the 'reject bad input' section of flows.sh.
+"""Bad input and wrong methods. One table, as in the 'reject bad input' section of the old shell suite.
 
-Each response body is the whole message (flows.sh compared it for equality), and no request here
+Each response body is the whole message (the old suite compared it for equality), and no request here
 may leave a project behind.
 """
 import pytest

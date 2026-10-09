@@ -1,6 +1,6 @@
-"""The dashboard. Ported from flows.sh.
+"""The dashboard. Ported from the old shell suite.
 
-Not ported: flows.sh also asserts the empty state ("everything assigned to you is finished") after
+Not ported: that suite also asserted the empty state ("everything assigned to you is finished") after
 finishing the epic. That holds only if Ada has no other unfinished assignment, and other tests
 create projects assigned to her, so it would pass or fail depending on test order. If you want it,
 give the test its own user who is assigned nothing else.

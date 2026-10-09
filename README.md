@@ -19,8 +19,7 @@ migrations have been applied.
 the limit sooner. That is the whole cost, and it used to be a blank page instead: the pickers called
 `mb_strtolower()` directly, so on a PHP without the extension every page carrying one stopped
 rendering halfway down, with the reason visible only in the error log. `lower()` and `chars()` in
-`src/lib.php` are the two helpers that avoid it, and `tests/flows.sh` refuses any direct `mb_` call
-outside them.
+`src/lib.php` are the two helpers that avoid it, and a direct `mb_` call belongs nowhere else.
 
 Bootstrap and htmx are loaded from a CDN (`cdn.jsdelivr.net`, pinned to exact versions), so a client
 needs internet access to render the pages. For an air-gapped install, download those three files and
@@ -172,11 +171,8 @@ created at the same moment as its content is generally not announced at all.
 
 ```sh
 php  bin/check.php     # is this PHP able to run the app at all
-cd tests && .venv/bin/python -m pytest -q   # the suite
+cd tests && .venv/bin/python -m pytest -q   # the suite, including the account tabs in Chromium
 php  tests/schema.php  # migrations, constraints, the schema ledger
-bash tests/auth.sh     # sign-in, setup, invites, roles, deactivation, accounts, authorization, CSRF
-bash tests/flows.sh    # projects, boards, drag and drop, htmx fragments
-bash tests/browser-tabs.sh   # the account tabs in headless Chromium; skips itself if there is none
 node tests/drag.js     # the board's drag highlight, which is client-side
 ```
 
@@ -187,12 +183,11 @@ temp directory, migrates a throwaway database there, and drives it over HTTP —
 authorization, projects, boards and their panels, search, validation, comments, assignees, the
 dashboard, the list view, and — in `test_admin.py` — the admin area and the statuses it administers.
 
-The two shell suites are the previous generation, left in place rather than rewritten: they still
-name `/users/` and `PANEL_ORDER`, both of which are gone, and so no longer pass. What nothing in the
-Python suite has replaced is `tests/browser-tabs.sh`, the account tabs in a real browser, and
-`tests/drag.js`: the board's drag highlight is client-side, and a class toggled inside a listener
-either works or fails silently, so the only honest test is to run it. `flows.sh` runs it too, and
-skips it with a line saying so if `node` is absent.
+The account tabs are checked in a real browser by `test_browser_tabs.py`, which drives headless
+Chromium at the rendered page and skips itself if there is no browser or the Bootstrap stylesheet
+cannot be fetched. `tests/drag.js` is the other check that has to run outside the Python suite: the
+board's drag highlight is client-side, and a class toggled inside a listener either works or fails
+silently, so the only honest test is to run it.
 
 ## How it is put together
 
@@ -201,7 +196,7 @@ public/     the document root: pages, endpoints, and assets, colocated
 src/        bootstrap, shared library, views, error handling
 db/         migrations, applied in filename order and recorded in schema_migrations
 bin/        migrate.php, backup.php
-tests/      the Python suite, schema checks, fixtures, the older shell suites
+tests/      the Python suite, schema checks, fixtures, drag.js
 data/       board.db, created by migrate.php, never committed
 ```
 
@@ -227,9 +222,7 @@ exception for people. `user_link()` points an admin at that person's row on the 
 is worse than no href at all, and `/account/` is only ever your own, so there is nowhere else for a
 name to point. Boards link to `board/?id=`. Two places are deliberately left as plain text: the
 picker dialogs, where clicking a row adds it rather than going anywhere, and the avatars on a board
-card, because the card is itself a link and an anchor inside an anchor does not work. `tests/flows.sh`
-fails if any page grows a nested anchor, and checks that every user reference still has a row to
-land on.
+card, because the card is itself a link and an anchor inside an anchor does not work.
 
 An account is retired rather than deleted. `users.active` is a flag, and `/admin/users/` gives an
 admin a Deactivate button per row that switches it either way; the account keeps its row, so the
@@ -383,8 +376,7 @@ have no action buttons to move: their content *is* a list of choices, and a list
 the body, so they are just the example's markup with nothing added to it.
 
 Every control on `/boards/`, `/board/` and both dialogs is full size. The `-sm` variants were shipped to
-match the rest of the app and were asked for twice before that was noticed, so `flows.sh` fails if a
-shrunk control reappears on either board page or in either dialog.
+match the rest of the app and were asked for twice before that was noticed.
 
 A board page carries no way to rename its own board. It used to carry an admin's Edit link, which was a
 second way into the same dialog as `/boards/` and reached by leaving the board you were looking at; it is
@@ -423,7 +415,7 @@ get.
 Both pairs draw their fields from `board_form_fields()` and `board_panel_rows()` in `views.php`, because
 two copies of a form is two places for a field name, a `maxlength` or the cost of Never to drift apart,
 and the split would otherwise have introduced exactly the duplication the rest of this page avoids.
-`flows.sh` checks the fragment and the page agree, and `auth.sh` checks all four refuse a member — the
+The fragment and the page must agree, and all four must refuse a member — the
 fragments are separate ways in, so guarding only the pages would have let one read a board's settings.
 
 A board's description is a textarea, where it is a single line of text in an input. That puts the value
@@ -456,15 +448,14 @@ page once output had started, so it logged and returned, and the browser was lef
 document with no message in it — a truncated page that reads as a layout bug rather than a crash. That
 is the right trade for paths and SQL, and it is what the rendering checks in the suite were written
 against: they walk the signed-in pages and fail unless each one ends in `</html>` and leaks no PHP
-diagnostic, and `tests/auth.sh` does the same for the sign-in page. A project page once stopped dead
+diagnostic, and `test_auth.py` does the same for the sign-in page. A project page once stopped dead
 at the top of its right column with the whole suite green, because every assertion in it greps for
 content the page had already managed to emit; those checks exist because of it.
 
 Buffering, described above, is what removed the other half of the problem. A crash is now a 500 with a
-complete page rather than a 200 with half of one, `tests/flows.sh` asserts that directly against a copy
-of the app with a fault injected into it — late in a page, and in an htmx endpoint — and
-`data/error.log` records what happened. `SLATE_DEBUG=1` puts the detail on the page for development,
-and `php bin/check.php` says whether the PHP itself is set up to run the app.
+complete page rather than a 200 with half of one, and `data/error.log` records what happened.
+`SLATE_DEBUG=1` puts the detail on the page for development, and `php bin/check.php` says whether the
+PHP itself is set up to run the app.
 
 ## Security posture
 

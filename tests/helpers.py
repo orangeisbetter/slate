@@ -3,7 +3,7 @@ from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
-ADA_ID = 1  # the seeded user; flows.sh asserts creator_id / author_id == 1
+ADA_ID = 1  # the seeded user; the old shell suite asserted creator_id / author_id == 1
 
 
 def soup(response):

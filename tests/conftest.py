@@ -1,6 +1,6 @@
 """Shared fixtures: a throwaway copy of the app served by `php -S`, plus HTTP clients.
 
-Mirrors the setup at the top of flows.sh (copy src/public/db/bin, migrate, seed, serve), but the
+Mirrors the setup of the old shell suite (copy src/public/db/bin, migrate, seed, serve), but the
 port is picked by the OS so nothing can collide, and the server is a fixture rather than a global.
 
 Requires: pip install pytest requests beautifulsoup4
@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 SEED_EMAIL = "ada@example.com"
 SEED_PASSWORD = "correcthorse1"
-SEED_IDENTITY = "Ada Lovelace (admin)"  # as shown on signed-in pages (see flows.sh, "signed in identity")
+SEED_IDENTITY = "Ada Lovelace (admin)"  # as shown on signed-in pages
 
 
 def _free_port() -> int:

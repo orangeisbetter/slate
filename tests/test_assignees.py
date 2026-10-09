@@ -1,4 +1,4 @@
-"""Assignees and the people picker. Ported from flows.sh.
+"""Assignees and the people picker. Ported from the old shell suite.
 
 The markup tests (the last group) pin the contract between the server's HTML and htmx. They are the
 tests most worth replacing with a browser test eventually; they are here so the port is complete.
@@ -14,7 +14,7 @@ HTMX = {"HX-Request": "true"}
 
 @pytest.fixture
 def project(make_project):
-    """Assigned to Grace (2) and user 4, the state flows.sh puts the project in before the picker."""
+    """Assigned to Grace (2) and user 4, the state the old shell suite put the project in before the picker."""
     return make_project("Assignee test", assignees=[2, 4])
 
 

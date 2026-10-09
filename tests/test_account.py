@@ -3,7 +3,7 @@
 The page used to be three — Profile, Password, Access. Project #30 re-cut them: the name form and
 the role badges on Profile, and email, password and the Slack connection on Sign-in. The panes are
 switched by CSS (:target/:has()), so what is in the *document* is pinned here; which one is shown is
-browser-tabs.sh's job, since that is decided by the cascade and not by the HTML.
+test_browser_tabs.py's job, since that is decided by the cascade and not by the HTML.
 """
 import sqlite3
 import subprocess

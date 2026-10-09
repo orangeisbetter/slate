@@ -1,6 +1,6 @@
 """Login flow: who gets in, who doesn't, and what a session does and doesn't allow.
 
-Grounded in flows.sh: POST /login/login.php with email + password redirects to /index.php; signed-in
+Grounded in the old shell suite: POST /login/login.php with email + password redirects to /index.php; signed-in
 pages show the user's identity; /login/ and /setup/ redirect away from a signed-in visitor;
 SLATE_REQUIRE_LOGIN sends anonymous requests to a redirect.
 
@@ -130,7 +130,7 @@ def test_an_anonymous_visitor_cannot_open_a_project(app, anon, project_id):
 
 @pytest.mark.parametrize("page", ["/login/", "/setup/"])
 def test_signed_in_visitors_are_moved_off_login_and_setup(signed_in, page):
-    # flows.sh: "login/ and setup/ redirect away from here" once signed in.
+    # the old shell suite: "login/ and setup/ redirect away from here" once signed in.
     assert is_redirect(signed_in.get(page))
 
 

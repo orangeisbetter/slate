@@ -697,7 +697,7 @@ function md_url_allowed(string $url): bool {
  * Inline markdown for one line: code spans, bracket links, bold and italic,
  * then #NN references. $exists maps id => anything for the ids known to name a project.
  * $link_refs false leaves #NN inside a markdown link's text alone, so a link never
- * grows a nested anchor — one target per link, which flows.sh refuses to nest.
+ * grows a nested anchor — one target per link.
  */
 function md_inline(string $text, array $exists, bool $link_refs = true): string {
     // Code spans first: escaped and left alone, links and references included.

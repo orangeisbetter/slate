@@ -1,5 +1,5 @@
 <?php
-// Seeds a scratch database for tests/flows.sh: the same four names the app used to fake,
+// Seeds a scratch database for the test suite: the same four names the app used to fake,
 // with credentials on the first so the test can sign in.
 //   php tests/seed.php <path-to-db> <email> <password>
 // Run after bin/migrate.php.

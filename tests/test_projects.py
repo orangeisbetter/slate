@@ -1,4 +1,4 @@
-"""Projects: create, render, update, change status. Ported from flows.sh.
+"""Projects: create, render, update, change status. Ported from the old shell suite.
 
 Each test makes its own project (see make_project in conftest.py).
 """
@@ -54,7 +54,7 @@ def test_description_is_escaped_not_rendered(response, page):
     assert "<b>text</b>" not in response.text
 
 
-def test_bug_type_is_badged_as_danger(page):  # coupled to Bootstrap class names, as in flows.sh
+def test_bug_type_is_badged_as_danger(page):  # coupled to Bootstrap class names, as in the old shell suite
     assert page.select(".bg-danger-subtle.text-danger-emphasis")
 
 

@@ -64,15 +64,13 @@ never touch boards 3 or 4.
 php -S localhost:8000 -t public          # serve the app
 cd tests && .venv/bin/python -m pytest -q # the suite (120+ tests)
 php tests/schema.php                     # schema gate
-bash tests/browser-tabs.sh               # account tabs in Chromium; skips if none
 ```
 
 - The Python suite is the suite. It copies the app to a temp directory, migrates a fresh database
   and drives it over HTTP; it never touches `data/board.db`. Fixtures are in `tests/conftest.py`.
-- `tests/auth.sh` and `tests/flows.sh` are the **previous generation**: superseded, left in place,
-  already failing (they still name `/users/` and `PANEL_ORDER`). Do not update them to match new
-  work, and do not treat their failures as regressions. `browser-tabs.sh` and `drag.js` are the
-  parts nothing has replaced and should stay working.
+- The old bash suites are gone. The last live one, `browser-tabs.sh`, is now
+  `test_browser_tabs.py`, which drives headless Chromium and skips if there is none. `drag.js`
+  stays: the board's drag highlight is client-side and only a browser can test it.
 - One server per pytest session, so **mutations leak between tests**: anything you change through
   the app and do not put back (a user's name, a password, the statuses table) decides later tests'
   outcomes. The patterns to copy: `test_admin.py`'s snapshot fixture for the statuses table, and
@@ -118,7 +116,7 @@ public/          document root; each directory is a page with its endpoints besi
 public/admin/    admin area: hub, statuses, users (admin-only; members get 403)
 db/              migrations in filename order, recorded in schema_migrations
 bin/             migrate.php, backup.php, check.php
-tests/           pytest suite, schema.php, browser-tabs.sh, the older shell suites
+tests/           pytest suite, schema.php, drag.js, seed.php
 data/            board.db — gitignored, never committed, the two-faced file above
 ```
 
@@ -132,5 +130,5 @@ Do not relitigate these; they were decided and built:
   everyone else plain text.
 - The account page has two tabs, Profile and Sign-in; unlinking Slack is refused without a
   password.
-- Bash suites stay untouched; Python owns new coverage.
+- The test suite is Python (`tests/test_*.py`); `drag.js` owns the one client-side check.
 - Never commit unless the user asks. `data/`, `tests/.venv/`, `tests/__pycache__/` are gitignored.

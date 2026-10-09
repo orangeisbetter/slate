@@ -1,4 +1,4 @@
-"""Comments over htmx. Ported from flows.sh."""
+"""Comments over htmx. Ported from the old shell suite."""
 from helpers import ADA_ID, soup, text_of
 
 HTMX = {"HX-Request": "true"}
