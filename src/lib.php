@@ -721,6 +721,7 @@ function start_session(): void {
         return;
     }
     session_name('slate');
+    $secure = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
     session_set_cookie_params([
         'lifetime' => SESSION_LIFETIME,
         // The app is served from the document root, so '/' is the whole path. Serving it from a
@@ -731,8 +732,12 @@ function start_session(): void {
         // drop the cookie on that first navigation. Lax still withholds it on cross-site
         // POSTs, which is what the form endpoints need.
         'samesite' => 'Lax',
-        'secure' => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
+        'secure' => $secure,
     ]);
+    // Ensure server-side session files live for the cookie lifetime: PHP's default gc_maxlifetime
+    // is only 24 minutes, so the cookie would outlive the session data on many installs. The
+    // external sessioncleaner also honors this.
+    ini_set('session.gc_maxlifetime', (string) SESSION_LIFETIME);
     session_start();
 }
 
