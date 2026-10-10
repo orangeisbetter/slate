@@ -167,6 +167,35 @@ and keeping only the newest loses whichever of the two nobody has read yet. The 
 empty on load rather than at the first failure, because the docs are explicit that a live region
 created at the same moment as its content is generally not announced at all.
 
+## Sessions
+
+A signed-in session is kept in PHP's own session files, and the cookie that names it lasts two weeks
+(`SESSION_LIFETIME` in `src/lib.php`). The server-side file has to live at least that long, or the
+cookie outlives the data it points at and an otherwise valid session silently turns into a signed-out
+one. That lifetime is PHP's `session.gc_maxlifetime`, whose default is only 24 minutes, so it must be
+raised to match.
+
+It has to be set **globally, in `php.ini`** — a `conf.d` snippet is the supported way to do that:
+
+```sh
+# match <version> and <sapi> to `php -i | grep 'Loaded Configuration'`
+sudo tee /etc/php/8.2/fpm/conf.d/99-session-lifetime.ini >/dev/null <<'INI'
+session.gc_maxlifetime = 1209600
+INI
+sudo systemctl reload php8.2-fpm    # apache2ctl graceful, under apache2/mod_php
+```
+
+`1209600` is two weeks in seconds. Set it in the `conf.d` of whichever SAPI serves the app
+(`apache2` or `fpm`); if more than one shares the same `session.save_path`, set it in each, because
+the sweeper applies the smallest lifetime it finds.
+
+The app cannot do this from code, and used to try. Calling `ini_set('session.gc_maxlifetime', …)`
+only changes the value for the current request, and on Debian and Ubuntu PHP's own garbage collection
+is switched off — `session.gc_probability` is `0` and the work is delegated to the `sessionclean`
+cron job, which runs every 30 minutes and reads the value from the ini files, never from anything set
+at runtime. So a runtime `ini_set()` extended the cookie but left the files to be deleted after the
+default 24 minutes. The setting belongs in the ini, where both the SAPI and the sweeper can see it.
+
 ## Tests
 
 ```sh

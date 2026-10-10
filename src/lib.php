@@ -734,10 +734,6 @@ function start_session(): void {
         'samesite' => 'Lax',
         'secure' => $secure,
     ]);
-    // Ensure server-side session files live for the cookie lifetime: PHP's default gc_maxlifetime
-    // is only 24 minutes, so the cookie would outlive the session data on many installs. The
-    // external sessioncleaner also honors this.
-    ini_set('session.gc_maxlifetime', (string) SESSION_LIFETIME);
     session_start();
 }
 
