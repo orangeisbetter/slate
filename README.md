@@ -186,8 +186,9 @@ sudo systemctl reload php8.2-fpm    # apache2ctl graceful, under apache2/mod_php
 ```
 
 `1209600` is two weeks in seconds. Set it in the `conf.d` of whichever SAPI serves the app
-(`apache2` or `fpm`); if more than one shares the same `session.save_path`, set it in each, because
-the sweeper applies the smallest lifetime it finds.
+(`apache2` under mod_php, or `fpm`), and that is enough: `sessionclean` keeps the largest value it
+finds for a given `session.save_path`, so a shorter lifetime configured for another SAPI — the `cli`
+one, say, which is left at PHP's 24-minute default — cannot shorten it.
 
 The app cannot do this from code, and used to try. Calling `ini_set('session.gc_maxlifetime', …)`
 only changes the value for the current request, and on Debian and Ubuntu PHP's own garbage collection
