@@ -156,14 +156,7 @@ if ($email !== '') {
     }
 }
 
-$signup_val = (string)getenv('SLACK_ALLOW_SIGNUP');
-$allow_signup = false;
-if ($signup_val !== '') {
-    $v = strtolower(trim($signup_val));
-    if ($v === '1' || $v === 'true' || $v === 'yes' || $v === 'on') {
-        $allow_signup = true;
-    }
-}
+$allow_signup = (bool)getenv('SLACK_ALLOW_SIGNUP');
 
 if (!$allow_signup) {
     $_SESSION['login_error'] = 'Slack sign-ups are disabled. Contact an administrator.';

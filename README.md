@@ -82,14 +82,20 @@ fragments queue up and may appear to hang.
 
 ## Configuration
 
-Everything is optional, set as environment variables on the PHP process.
+All are optional, set as environment variables on the PHP process. Each has the default stated
+below when it is unset. Slack sign-in stays off until `SLACK_CLIENT_ID` and `SLACK_CLIENT_SECRET`
+are provided.
 
-| Variable | Effect |
-| --- | --- |
-| `SLATE_SETUP_KEY` | Requires this key at `/setup/`. Set it if you might ever need to create another admin. |
-| `SLATE_DEBUG=1` | Shows full error detail on the page. Development only — it discloses paths and SQL. |
-| `SLATE_CSRF_STRICT=1` | Refuses state-changing requests that carry no cross-origin headers at all. |
-| `SLACK_ALLOWED_TEAM_ID` | Limits Slack sign-in and linking to members of that workspace (`T…` id). |
+| Variable | Default when unset | Effect |
+| --- | --- | --- |
+| `SLATE_SETUP_KEY` | Setup closes once an account exists | Requires this key at `/setup/`, so it stays reachable after setup. Set it if you might ever need to create another admin. |
+| `SLATE_DEBUG` | Errors show only a reference code | `1` shows full error detail on the page. Development only — it discloses paths and SQL. |
+| `SLATE_CSRF_STRICT` | Requests with no cross-origin headers are allowed | `1` refuses state-changing requests that carry no cross-origin headers at all. |
+| `SLACK_CLIENT_ID` | Slack sign-in and linking are disabled | Slack app client id. Required for Slack sign-in and linking. |
+| `SLACK_CLIENT_SECRET` | Slack sign-in and linking are disabled | Slack app client secret, used to exchange the OAuth code. Required for Slack sign-in and linking. |
+| `SLACK_REDIRECT_URI` | `<scheme>://<host>/login/slack-callback.php` | The redirect URI registered with the Slack app. |
+| `SLACK_ALLOWED_TEAM_ID` | Any workspace is accepted | Limits Slack sign-in and linking to members of that workspace (`T…` id). |
+| `SLACK_ALLOW_SIGNUP` | Slack only signs in already-linked accounts | `1` allows Slack sign-in to create new accounts. |
 
 ## Sessions
 
