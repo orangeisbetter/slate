@@ -22,9 +22,7 @@ if ($method !== 'GET' && $method !== 'POST') {
 $me = require_login();
 
 $id = (int)($_REQUEST['id'] ?? 0);
-if (!project($id)) {
-    bad('Project not found', 404);
-}
+editable_project($id);   // an archived project is read-only, board membership included
 
 $q = trim((string)($_REQUEST['q'] ?? ''));
 

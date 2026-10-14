@@ -10,6 +10,7 @@ $stmt->setFetchMode(PDO::FETCH_CLASS | PDO::FETCH_PROPS_LATE, Comment::class);
 $c = $stmt->fetch();
 if (!$c) bad('Comment not found', 404);
 if (!can_edit_comment($me, $c->author_id)) bad('You cannot delete this comment', 403);
+editable_project($c->project_id);   // an archived project is read-only, comments included
 q('DELETE FROM comments WHERE id=?', [$c->id]);
 q('UPDATE projects SET updated_at=? WHERE id=?', [gmdate('c'), $c->project_id]);
 if (isset($_SERVER['HTTP_HX_REQUEST'])) {

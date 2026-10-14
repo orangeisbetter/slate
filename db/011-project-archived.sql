@@ -1,0 +1,14 @@
+-- 011: archiving a project.
+--
+-- Deleting a project cascades to its subprojects and comments, so the work is gone for
+-- good. That is right for something filed by mistake and wrong for finished or parked work
+-- that should leave the boards and lists without being destroyed. archived is the softer
+-- half of that pair, the way users.active is for an account: a flag, not a row moved
+-- somewhere else, so every relationship stays exactly where it is -- subprojects, comments,
+-- status history and board memberships all keep pointing at the same id, and restoring is
+-- one UPDATE. An archived project is out of the dashboard, every board, the list's default
+-- filter and search, and is reachable again through the list's archived view, where an admin
+-- can put it back. Delete stays for the admin who really means it.
+--
+-- The default is 0, so every existing project is unarchived and nothing is written back.
+ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;

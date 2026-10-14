@@ -6,7 +6,7 @@ const SLATE_REQUIRE_LOGIN = true;
 require __DIR__ . '/../../src/bootstrap.php';
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') bad('POST only', 405);
 $id = (int)($_POST['id'] ?? 0);
-if (!project($id)) bad('Project not found', 404);
+editable_project($id);   // an archived project takes no new comments
 $body = trim($_POST['body'] ?? '');
 if ($body !== '') {
     q('INSERT INTO comments(project_id,author_id,body,created_at) VALUES(?,?,?,?)', [$id, $me, $body, gmdate('c')]);

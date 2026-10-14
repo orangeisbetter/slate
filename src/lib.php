@@ -165,11 +165,18 @@ function go(string $url): never {
     header("Location: $url");
     exit;
 }
+// Refuses a request with a status code and a sentence. An htmx fragment gets the sentence as plain
+// text, which is what the toast path has always read; anything else gets the shared error page. The
+// branch is the HX-Request header rather than anything the browser sends, so the two are told apart
+// by the same signal htmx itself uses (see the 401 in app.php).
 function bad(string $msg, int $code = 400): never {
-    http_response_code($code);
-    header('Content-Type: text/plain');
-    echo $msg;
-    exit;
+    if (isset($_SERVER['HTTP_HX_REQUEST'])) {
+        http_response_code($code);
+        header('Content-Type: text/plain');
+        echo $msg;
+        exit;
+    }
+    slate_error_page($code, $msg);
 }
 function validDate(mixed $d): ?string {
     $d = (string)$d;
@@ -188,6 +195,30 @@ function project(int $id): ?Project {
     $p->assignees = array_map('intval', q('SELECT user_id FROM project_assignees WHERE project_id=?', [$id])->fetchAll(PDO::FETCH_COLUMN));
     return $p;
 }
+
+/** Whether a project has been archived. An archived project is retired and read-only. */
+function project_is_archived(int $id): bool {
+    return (bool)q('SELECT archived FROM projects WHERE id=?', [$id])->fetchColumn();
+}
+
+/**
+ * Loads a project and refuses to go on if it has been archived.
+ *
+ * Archiving only hides a project -- the row and everything attached to it stay put -- so hiding is
+ * all the flag does on its own. Nothing else would stop a crafted request from changing a project
+ * the UI no longer offers to change, so every endpoint that mutates a project loads it through
+ * here rather than through project(). archive.php is the one exception: archiving is the change.
+ */
+function editable_project(int $id): Project {
+    $p = project($id);
+    if (!$p) {
+        bad('Project not found', 404);
+    }
+    if ($p->archived) {
+        bad('This project is archived and cannot be changed', 409);
+    }
+    return $p;
+}
 function setAssignees(int $id, array $ids): void {
     q('DELETE FROM project_assignees WHERE project_id=?', [$id]);
     foreach (array_unique(array_map('intval', $ids)) as $u) {
@@ -196,6 +227,23 @@ function setAssignees(int $id, array $ids): void {
 }
 function logStatus(int $id, ?string $from, string $to, ?int $by = null): void {
     q('INSERT INTO status_log(project_id,from_status,to_status,changed_at,changed_by) VALUES(?,?,?,?,?)', [$id, $from, $to, gmdate('c'), $by]);
+}
+
+/**
+ * Retires a project: it leaves every default view and board, now and for good.
+ *
+ * The flag is the whole of archiving: the row and everything attached to it stay where they are,
+ * which is why there is nothing to rebuild and nothing to undo. Archiving is one-way, so there is
+ * no counterpart function -- the value is only ever set to 1. It is written only while archived=0,
+ * so a resubmitted form cannot roll the date forward on a project that has already gone.
+ *
+ * Callers hold the guards: only an admin may archive, which the endpoint enforces because only the
+ * request knows who is asking.
+ */
+function archive_project(int $id): void {
+    $now = gmdate('c');
+    q('UPDATE projects SET archived=1, archived_at=?, updated_at=? WHERE id=? AND archived=0',
+      [$now, $now, $id]);
 }
 
 /**
@@ -220,8 +268,14 @@ function create_project_from_post(int $creator): never {
     $start = validDate($_POST['start_date'] ?? '');
     $due = validDate($_POST['due_date'] ?? '');
     $parent = (int)($_POST['parent_id'] ?? 0) ?: null;
-    if ($parent && !project($parent)) {
-        bad('Parent project not found', 404);
+    if ($parent) {
+        $parent_project = project($parent);
+        if (!$parent_project) {
+            bad('Parent project not found', 404);
+        }
+        if ($parent_project->archived) {
+            bad('This project is archived and cannot be changed', 409);   // no new subprojects
+        }
     }
     $now = gmdate('c');
     q('INSERT INTO projects(title,description,status,type,creator_id,parent_id,start_date,due_date,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)',
@@ -248,10 +302,7 @@ function update_project_from_post(): never {
         bad('Title is required');
     }
     $id = (int)($_POST['id'] ?? 0);
-    $existing = project($id);
-    if (!$existing) {
-        bad('Project not found', 404);
-    }
+    $existing = editable_project($id);
     $st = $_POST['status'] ?? $existing->status;
     if (!status_exists($st)) {
         bad('Invalid status');
@@ -491,14 +542,15 @@ function revoke_invite(string $token): void {
 /** Every board, oldest first, with how many projects sit on it. */
 function boards(): array {
     return q('SELECT b.id, b.name, b.description, b.created_by, b.created_at,
-                      (SELECT COUNT(*) FROM project_boards pb WHERE pb.board_id=b.id) AS project_count
+                      (SELECT COUNT(*) FROM project_boards pb JOIN projects p ON p.id=pb.project_id
+                        WHERE pb.board_id=b.id AND p.archived=0) AS project_count
                FROM boards b ORDER BY b.id')->fetchAll(PDO::FETCH_CLASS | PDO::FETCH_PROPS_LATE, Board::class);
 }
 
 function board(int $id): ?Board {
     $stmt = q('SELECT * FROM boards WHERE id=?', [$id]);
     $stmt->setFetchMode(PDO::FETCH_CLASS | PDO::FETCH_PROPS_LATE, Board::class);
-    return $stmt->fetch();
+    return $stmt->fetch() ?: null;
 }
 
 /**
@@ -540,6 +592,7 @@ function board_status_counts(): array {
     $out = [];
     foreach (q('SELECT pb.board_id, p.status, COUNT(*) AS n
                 FROM project_boards pb JOIN projects p ON p.id = pb.project_id
+                WHERE p.archived=0
                 GROUP BY pb.board_id, p.status') as $row) {
         $out[(int)$row['board_id']][$row['status']] = (int)$row['n'];
     }
@@ -601,10 +654,12 @@ function search_projects(string $q, int $limit = 0): array {
     }
     $where = '(' . implode(' AND ', $groups) . ')';
     if ($by_id !== null) {
-        $where .= ' OR id = ?';
+        // Bracketed so the archived condition out front applies to it too: without this the id
+        // branch is ORed past `archived=0` and a number would still surface an archived project.
+        $where = "($where OR id = ?)";
     }
     return q("SELECT * FROM projects
-              WHERE $where
+              WHERE archived=0 AND $where
               ORDER BY updated_at DESC, id DESC" . $cap, $args)->fetchAll(PDO::FETCH_CLASS | PDO::FETCH_PROPS_LATE, Project::class);
 }
 

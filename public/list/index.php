@@ -61,6 +61,12 @@ if (!is_array($statuses)) {
 // Build filter
 // ============
 
+// Archived projects leave the list unless this view is asked for them, which is how they stay out
+// of every default view without becoming unreachable. The archived view is where a retired project
+// is read afterwards, since there is no way back; it is opt-in rather than the default because a
+// retired project in the working list is the clutter archiving was meant to remove.
+$show_archived = !empty($_GET['archived']);
+
 $real_boards = array_filter($boards, fn($board) => $board !== 0);
 $has_no_board = in_array(0, $boards, true);
 
@@ -77,24 +83,30 @@ if ($has_no_board) {
     $board_conditions[] = "pb.project_id IS NULL";
 }
 
-$boards_filter_sql = count($board_conditions) > 0
-    ? "WHERE (" . implode(" OR ", $board_conditions) . ")"
-    : "";
+// Every condition is ANDed together. The board rule is one group of ORs inside brackets, since a
+// project matches it through any of its boards; the rest are single tests.
+$conditions = [];
+if (count($board_conditions) > 0) {
+    $conditions[] = "(" . implode(" OR ", $board_conditions) . ")";
+}
 
-$placeholders = implode(",", array_fill(0, count($statuses), "?"));
-$statuses_filter_sql = count($statuses) > 0
-    ? (count($board_conditions) > 0 ? " AND " : "WHERE ")
-      . "p.status IN ($placeholders)"
-    : "";
+if (count($statuses) > 0) {
+    $placeholders = implode(",", array_fill(0, count($statuses), "?"));
+    $conditions[] = "p.status IN ($placeholders)";
+    $params = array_merge($params, $statuses);
+}
 
-$params = array_merge($params, $statuses);
+if (!$show_archived) {
+    $conditions[] = "p.archived = 0";
+}
+
+$where_sql = count($conditions) > 0 ? "WHERE " . implode(" AND ", $conditions) : "";
 
 $sql = <<<SQL
     SELECT DISTINCT p.*
     FROM projects p
     LEFT JOIN project_boards pb ON pb.project_id = p.id
-    $boards_filter_sql
-    $statuses_filter_sql
+    $where_sql
     ORDER BY p.{$sort}_at DESC, p.id DESC
 SQL;
 
@@ -143,6 +155,14 @@ page_start('All projects');
                 <?php endforeach ?>
             </multi-select>
         </div>
+        <?php // Archived projects are here only when asked for, which is how they stay out of the
+              // default list without becoming unreachable. There is no Restore -- archiving is
+              // one-way -- so this view is where a retired project is read, not where it is undone. ?>
+        <div class="form-check mb-0">
+            <input class="form-check-input" type="checkbox" name="archived" value="1"
+                   id="show-archived" <?= $show_archived ? 'checked' : '' ?>>
+            <label class="form-check-label text-body-secondary" for="show-archived">Include archived</label>
+        </div>
         <button class="btn btn-primary">Apply filters</button>
     </form>
     <div class="table-responsive card">
@@ -167,6 +187,12 @@ page_start('All projects');
                     <tr>
                         <td>
 <a class="fw-medium text-decoration-none" href="/project/?id=<?= $project->id ?>"><?php ref_badge((int)$project->id) ?><?= h($project->title) ?></a>
+                              <?php if ($project->archived): ?>
+                                  <span class="badge text-bg-secondary">Archived</span>
+                                  <?php if ($project->archived_at): ?>
+                                      <span class="small text-body-secondary"><?= dt($project->archived_at) ?></span>
+                                  <?php endif ?>
+                              <?php endif ?>
                               <?php if ($project->parent_id): ?>
                                   <div class="small text-body-secondary">in <?php ref_badge((int)$project->parent_id) ?><?= h($parent_titles[$project->parent_id] ?? '') ?></div>
                             <?php endif ?>

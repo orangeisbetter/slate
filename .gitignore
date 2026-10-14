@@ -13,3 +13,6 @@
 /tests/.venv/
 /tests/__pycache__/
 /.pytest_cache/
+
+# Composer. composer.json and composer.lock are committed; the tree composer installs into is not.
+/vendor/

@@ -7,15 +7,7 @@ $id = (int)($_GET['id'] ?? 0);
 $p = project($id);
 
 if (!$p) {
-	http_response_code(404);
-	page_start('Not found');
-	?>
-	<div class="page-wide mx-auto p-4">
-		<p>Project not found. <a href="/index.php">Back to the board</a></p>
-	</div>
-	<?php
-	page_end();
-	exit;
+	bad('Project not found', 404);
 }
 
 // Ancestors of this project, outermost first, for the breadcrumb.
@@ -24,6 +16,11 @@ $current = $p;
 while ($current->parent_id && ($current = project($current->parent_id))) {
 	array_unshift($ancestors, $current);
 }
+
+// An archived project is retired: the page still opens and reads in full, but nothing on it may be
+// changed. Every control below is drawn only while the project is editable, and the endpoints
+// behind them refuse an archived project even if a request is crafted to reach them anyway.
+$editable = !$p->archived;
 
 $subprojects = q('SELECT * FROM projects WHERE parent_id=? ORDER BY id', [$id])->fetchAll(PDO::FETCH_CLASS | PDO::FETCH_PROPS_LATE, Project::class);
 
@@ -42,20 +39,30 @@ page_start($p->title);
 		<div class="d-flex align-items-center gap-2 mb-2">
 			<h1 class="h3 mb-0"><?php ref_badge($id) ?><?= h($p->title) ?></h1>
 			<?php type_badge($p->type) ?>
+			<?php // Archived is a state, not a hidden fact: the page still opens, and the badge is what
+			       // says why it is on no board and in no list. ?>
+			<?php if ($p->archived): ?>
+				<span class="badge text-bg-secondary">Archived</span>
+			<?php endif ?>
 		</div>
 		<div class="row mb-3">
 			<div class="col-auto">
-				<select class="form-select" name="status" hx-patch="/project/update_status.php" hx-target="#status-history-list" hx-swap="outerHTML" hx-vals='{"id": <?= $id ?>}'>
-					<?php // panel_order(), the order work moves through — one list everywhere the statuses
-					       // are offered, so a status reads the same here as on the board. ?>
-					<?php foreach (panel_order() as $status): ?>
-						<option value="<?= $status ?>"<?= $status === $p->status ? ' selected' : '' ?>><?= status_label($status) ?></option>
-					<?php endforeach ?>
-				</select>
+				<?php if ($editable): ?>
+					<select class="form-select" name="status" hx-patch="/project/update_status.php" hx-target="#status-history-list" hx-swap="outerHTML" hx-vals='{"id": <?= $id ?>}'>
+						<?php // panel_order(), the order work moves through — one list everywhere the statuses
+						       // are offered, so a status reads the same here as on the board. ?>
+						<?php foreach (panel_order() as $status): ?>
+							<option value="<?= $status ?>"<?= $status === $p->status ? ' selected' : '' ?>><?= status_label($status) ?></option>
+						<?php endforeach ?>
+					</select>
+				<?php else: ?>
+					<span class="badge text-bg-<?= status_tone($p->status) ?>"><?= status_label($p->status) ?></span>
+				<?php endif ?>
 			</div>
 		</div>
 		<div class="row g-4">
 		<div class="col-lg-8">
+			<?php if ($editable): ?>
 			<?php // The description flip card: the rendered text is the view, the textarea the edit
 			       // state, and the card holds one at a time — the place it is read is the place it
 			       // is written. The switch is a hidden checkbox flipped by labels, so unlike a
@@ -69,7 +76,7 @@ page_start($p->title);
 						<label class="btn btn-sm btn-outline-secondary ms-auto" for="desc-toggle">Edit</label>
 					</div>
 					<?php if (trim($p->description) !== ''): ?>
-						<div id="project-description"><?= rich_text($p->description) ?></div>
+						<div id="project-description" class="md-body"><?= rich_text($p->description) ?></div>
 					<?php else: ?>
 						<div class="text-body-secondary small">No description yet.</div>
 					<?php endif ?>
@@ -79,7 +86,7 @@ page_start($p->title);
 						<input type="hidden" name="id" value="<?= $id ?>">
 						<label class="form-label fw-semibold" for="desc">Description</label>
 						<textarea class="form-control mb-2" id="desc" name="description" rows="6"><?= h($p->description) ?></textarea>
-						<div class="form-text mb-2">Markdown: <code>**bold**</code> for <strong>bold</strong>, <code>*italic*</code> for <em>italic</em>, <code>`code`</code> for <code>code</code>, <code>- list</code>, <code>[text](url)</code></div>
+						<div class="form-text mb-2">Markdown: <code>**bold**</code> for <strong>bold</strong>, <code>*italic*</code> for <em>italic</em>, <code>`code`</code> for <code>code</code>, <code>- list</code>, <code>[text](url)</code>, and a bare <code>https://</code> URL links too</div>
 						<button class="btn btn-primary">Save description</button>
 						<label class="btn btn-outline-secondary" for="desc-toggle">Cancel</label>
 					</form>
@@ -90,6 +97,32 @@ page_start($p->title);
 					<?php project_form($p, $id, [], '/project/update.php', false) ?>
 				</div>
 			</div>
+			<?php else: ?>
+			<?php // Archived reads the same, but as facts: the description is shown, and the fields
+			       // are a definition list rather than inputs, because nothing here may be changed. ?>
+			<div class="card mb-2">
+				<div class="card-body">
+					<div class="fw-semibold mb-2">Description</div>
+					<?php if (trim($p->description) !== ''): ?>
+						<div id="project-description" class="md-body"><?= rich_text($p->description) ?></div>
+					<?php else: ?>
+						<div class="text-body-secondary small">No description yet.</div>
+					<?php endif ?>
+				</div>
+			</div>
+			<div class="card mb-2">
+				<div class="card-body">
+					<dl class="row mb-0">
+						<dt class="col-sm-3 fw-normal text-body-secondary">Type</dt>
+						<dd class="col-sm-9"><?php type_badge($p->type) ?></dd>
+						<dt class="col-sm-3 fw-normal text-body-secondary">Start date</dt>
+						<dd class="col-sm-9"><?= h($p->start_date ?: '—') ?></dd>
+						<dt class="col-sm-3 fw-normal text-body-secondary">Due date</dt>
+						<dd class="col-sm-9"><?= h($p->due_date ?: '—') ?></dd>
+					</dl>
+				</div>
+			</div>
+			<?php endif ?>
 				<?php last_updated_line($p) ?>
 				<div class="card mb-3">
 					<div class="card-header fw-semibold">Subprojects</div>
@@ -102,6 +135,9 @@ page_start($p->title);
 								<?php type_badge($sub->type) ?>
 								<?php ref_badge((int)$sub->id) ?>
 								<?= h($sub->title) ?>
+								<?php if ($sub->archived): ?>
+									<span class="badge text-bg-secondary">Archived</span>
+								<?php endif ?>
 								<?php if ($sub->due_date): ?>
 									<small class="text-body-secondary">due <?= h($sub->due_date) ?></small>
 								<?php endif ?>
@@ -110,11 +146,15 @@ page_start($p->title);
 						<?php endforeach ?>
 					</div>
 					<div class="card-body">
-						<form class="input-group" method="post" action="/project/add.php">
-							<input class="form-control" name="title" required placeholder="New subproject title">
-							<input type="hidden" name="parent_id" value="<?= $id ?>">
-							<button class="btn btn-outline-primary">Add subproject</button>
-						</form>
+						<?php if ($editable): ?>
+							<form class="input-group" method="post" action="/project/add.php">
+								<input class="form-control" name="title" required placeholder="New subproject title">
+								<input type="hidden" name="parent_id" value="<?= $id ?>">
+								<button class="btn btn-outline-primary">Add subproject</button>
+							</form>
+						<?php else: ?>
+							<p class="text-body-secondary small mb-0">Archived, so no new subprojects can be added.</p>
+						<?php endif ?>
 					</div>
 				</div>
 				<div class="card" id="comments">
@@ -123,12 +163,16 @@ page_start($p->title);
 						<div id="cms">
 							<?php render_comments($id) ?>
 						</div>
-						<form class="mt-3" method="post" action="/project/comment.php" hx-post="/project/comment.php" hx-target="#cms" hx-on::after-request="this.reset()">
-							<input type="hidden" name="id" value="<?= $id ?>">
-							<textarea class="form-control mb-2" name="body" rows="3" required placeholder="Write a comment"></textarea>
-							<div class="form-text mb-2">Markdown: <code>**bold**</code> for <strong>bold</strong>, <code>*italic*</code> for <em>italic</em>, <code>`code`</code> for <code>code</code>, <code>- list</code>, <code>[text](url)</code></div>
-							<button class="btn btn-outline-primary">Add comment</button>
-						</form>
+						<?php if ($editable): ?>
+							<form class="mt-3" method="post" action="/project/comment.php" hx-post="/project/comment.php" hx-target="#cms" hx-on::after-request="this.reset()">
+								<input type="hidden" name="id" value="<?= $id ?>">
+								<textarea class="form-control mb-2" name="body" rows="3" required placeholder="Write a comment"></textarea>
+								<div class="form-text mb-2">Markdown: <code>**bold**</code> for <strong>bold</strong>, <code>*italic*</code> for <em>italic</em>, <code>`code`</code> for <code>code</code>, <code>- list</code>, <code>[text](url)</code>, and a bare <code>https://</code> URL links too</div>
+								<button class="btn btn-outline-primary">Add comment</button>
+							</form>
+						<?php else: ?>
+							<p class="text-body-secondary small mt-3 mb-0">Archived, so no new comments can be added.</p>
+						<?php endif ?>
 					</div>
 				</div>
 			</div>
@@ -148,6 +192,7 @@ page_start($p->title);
 				<div class="mb-3"><?php user_link((int)$p->creator_id, $USERS[$p->creator_id] ?? 'Unknown') ?></div>
 
 				<div class="small text-body-secondary mb-1">Assignees</div>
+				<?php if ($editable): ?>
 				<form id="people-form" class="mb-3">
 					<input type="hidden" name="id" value="<?= $id ?>">
 					<?php foreach ($assigned as $uid): $u = $people_options[$uid] ?? null; ?>
@@ -200,8 +245,21 @@ page_start($p->title);
 						</div>
 					</div>
 				</div>
+				<?php else: ?>
+					<?php // Archived: the assignees are read, not edited. ?>
+					<?php if (!$assigned): ?>
+						<p class="text-body-secondary small mb-3">Nobody assigned.</p>
+					<?php else: ?>
+						<ul class="list-unstyled mb-3">
+							<?php foreach ($assigned as $uid): ?>
+								<li><?php user_link($uid, $people_options[$uid]['label'] ?? 'Unknown') ?></li>
+							<?php endforeach ?>
+						</ul>
+					<?php endif ?>
+				<?php endif ?>
 
 				<div class="small text-body-secondary mb-1">Boards</div>
+				<?php if ($editable): ?>
 				<form id="boards-form" class="mb-3">
 					<input type="hidden" name="id" value="<?= $id ?>">
 					<?php foreach ($board_ids as $bid): $b = $board_options[$bid] ?? null; ?>
@@ -254,16 +312,37 @@ page_start($p->title);
 						</div>
 					</div>
 				</div>
+				<?php else: ?>
+					<?php // Archived: the boards are read, not edited. ?>
+					<?php if (!$board_ids): ?>
+						<p class="text-body-secondary small mb-3">On no board.</p>
+					<?php else: ?>
+						<ul class="list-unstyled mb-3">
+							<?php foreach ($board_ids as $bid): ?>
+								<li><a class="link-quiet" href="/board/?id=<?= $bid ?>"><?= h($board_options[$bid]['label'] ?? 'Unknown') ?></a></li>
+							<?php endforeach ?>
+						</ul>
+					<?php endif ?>
+				<?php endif ?>
 
 				<div class="card mb-3">
 					<div class="card-header fw-semibold">Status history</div>
 					<?php status_history_list($id) ?>
 				</div>
 				<?php if (has_role($me, Role::Admin)): ?>
-					<form method="post" action="/project/delete.php" onsubmit="return confirm('Delete this project, its subprojects, and all their comments?')">
-						<input type="hidden" name="id" value="<?= $id ?>">
-						<button class="btn btn-outline-danger">Delete project</button>
-					</form>
+					<?php if ($p->archived): ?>
+						<?php // One-way: there is no way back, so the only honest thing the page can
+						      // offer is the fact. The badge above says what happened; this says it stays. ?>
+						<p class="text-body-secondary small mb-0">This project is archived and cannot be restored. Its history remains on this page.</p>
+					<?php else: ?>
+						<?php // The only way a project leaves the screens is to retire it for good, so the
+						      // confirmation has to say that plainly before it happens. ?>
+						<form method="post" action="/project/archive.php"
+							  onsubmit="return confirm('Archive this project? It leaves every board and list, and this cannot be undone.')">
+							<input type="hidden" name="id" value="<?= $id ?>">
+							<button class="btn btn-outline-secondary">Archive project</button>
+						</form>
+					<?php endif ?>
 				<?php endif ?>
 			</div>
 		</div>

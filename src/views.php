@@ -2,6 +2,10 @@
 // HTML building blocks shared by the pages (Bootstrap 5.3 markup).
 require_once __DIR__ . '/lib.php';
 
+// Parsedown, the markdown renderer (card #61). Composer's tree is gitignored, so a checkout needs
+// `composer install` once; bin/check.php reports it if that has not happened.
+require_once __DIR__ . '/../vendor/autoload.php';
+
 const TYPE_TONE = ['task' => 'secondary', 'bug' => 'danger', 'feature' => 'success', 'epic' => 'primary', 'research' => 'info'];
 
 // How many matches the header menu offers before it defers to the results page. Enough to cover a
@@ -349,15 +353,21 @@ function render_board(?int $board_id = null): void {
     $sub_counts = [];            // project id => number of subprojects
     $subs_done = [];             // project id => how many of them are done
     // Counted over every project, not just the ones on this board: a subproject sitting on
-    // another board, or on none at all, is still part of its parent.
+    // another board, or on none at all, is still part of its parent. Archived projects are
+    // named but not counted: their title is still what a card points at, while their own work
+    // has left the view like everything else that is archived.
     foreach ($all as $project) {
         $titles[$project->id] = $project->title;
-        if (!$project->parent_id) {
+        if ($project->archived || !$project->parent_id) {
             continue;
         }
         $sub_counts[$project->parent_id] = ($sub_counts[$project->parent_id] ?? 0) + 1;
         $subs_done[$project->parent_id] = ($subs_done[$project->parent_id] ?? 0) + (status_is_finished($project->status) ? 1 : 0);
     }
+
+    // The flag takes a project off every board without touching it, the way it left the dashboard:
+    // hidden panel or not, the card is simply not drawn.
+    $all = array_values(array_filter($all, fn($project) => !$project->archived));
 
     if ($board_id !== null) {
         $on_board = array_flip(array_map('intval',
@@ -605,6 +615,9 @@ function render_comments(int $project_id): void {
         return;
     }
 
+    // An archived project is read-only, so no comment on it offers Edit or Delete, whoever wrote it.
+    $archived = project_is_archived($project_id);
+
     // One existence lookup for every reference on the page, not one per comment: projects
     // hard-delete, so a link to an id that no longer exists stays plain text.
     $ids = [];
@@ -617,7 +630,7 @@ function render_comments(int $project_id): void {
 
     foreach ($comments as $comment) {
         $author = (int)$comment->author_id;
-        $can_change = can_edit_comment($me ?? null, $comment->author_id);
+        $can_change = !$archived && can_edit_comment($me ?? null, $comment->author_id);
         ?>
         <div class="border rounded bg-body-tertiary p-2 mb-2" id="comment-<?= (int)$comment->id ?>">
             <div class="small text-body-secondary d-flex align-items-center gap-2">
@@ -642,12 +655,16 @@ function render_comments(int $project_id): void {
 
 // Project references: writing "see #12" links #12 to /project/?id=12, the same way the header
 // search already understands #12. One renderer for both surfaces it covers — comments and
-// project descriptions — so the two agree, and the markdown of card #44 lives here too
-// rather than bolted on beside it.
+// project descriptions — so the two agree.
+//
+// Markdown itself is Parsedown (card #61, replacing the hand-rolled engine of card #44). The
+// app's additions are layered on a subclass rather than a second pass over the HTML: safe mode
+// escapes any HTML in the source, single newlines stay line breaks, a bare #NN becomes a project
+// link, and a link target is only trusted when md_url_allowed() accepts its scheme.
 //
 // A reference is a # preceded by start-of-text or a non-word character, so ABC#12 is not one.
-// Inside backtick code (spans and fenced blocks) #12 is code and stays plain text; code itself
-// renders exactly as it does today, since marking it up is #44's job, not this one's.
+// Inside backtick code (spans and fenced blocks) #12 is code and stays plain text: Parsedown
+// consumes the code before the # is ever offered to the reference handler.
 
 /** Every #NN id a text mentions, deduplicated. Existence is asked separately. */
 function ref_ids_in_text(string $text): array {
@@ -670,21 +687,6 @@ function existing_project_ids(array $ids): array {
     return array_map('intval', q("SELECT id FROM projects WHERE id IN ($in)", $ids)->fetchAll(PDO::FETCH_COLUMN));
 }
 
-// Markdown, card #44: the hand-rolled half of the card's either/or. No vendored parser —
-// instead an escape-first subset whose output can only ever be strong/em/code/link/list plus
-// the #NN references above. Everything literal goes through h(); the only < and > that reach
-// the page are the ones below, so a hand-written <b> stays text while **bold** becomes markup.
-//
-// Supported: **bold**, *italic* (__/ _ likewise, but only on word boundaries, so CTRL_REG
-// and snake_case survive), `inline code`, ```fenced blocks```, [text](url) links, and - / *
-// / 1. lists. Nothing else: no headings, images, blockquotes, tables or raw HTML. Single
-// newlines still mean a line break, so the current comment feel survives — blank lines start
-// a new paragraph instead.
-//
-// Link schemes are checked by md_url_allowed(): http(s) and root-relative paths only.
-// Anything else (javascript:, data:, ...) renders as plain text, never as a href.
-const MD_LINK_TEXT = '/\[([^\]\n]+)\]\(([^)\s\n]+)\)/';
-
 /** Whether a markdown link target may become a href. Relative only from the root. */
 function md_url_allowed(string $url): bool {
     if (preg_match('#^https?://[^\s<>"\']+$#i', $url)) {
@@ -694,82 +696,92 @@ function md_url_allowed(string $url): bool {
 }
 
 /**
- * Inline markdown for one line: code spans, bracket links, bold and italic,
- * then #NN references. $exists maps id => anything for the ids known to name a project.
- * $link_refs false leaves #NN inside a markdown link's text alone, so a link never
- * grows a nested anchor — one target per link.
+ * Parsedown, configured for the app.
+ *
+ * Safe mode is what keeps a source's own HTML as text rather than markup, and it also runs every
+ * link through a scheme check; inlineLink() below is the stricter gate the app wants. Breaks are
+ * on so a single newline is still a line break, and a bare http:// or https:// URL becomes a link
+ * on its own (card #62) — but only those two schemes, and only outside code, since that is all
+ * Parsedown's URL handler recognises; a bare hostname is left as text. Strict mode is the
+ * CommonMark rule that an ATX heading needs a space after its #, which is what lets a bare "#12"
+ * reach the reference handler below instead of turning into an <h1>.
  */
-function md_inline(string $text, array $exists, bool $link_refs = true): string {
-    // Code spans first: escaped and left alone, links and references included.
-    $parts = preg_split('/(`[^`\n]+`)/', $text, -1, PREG_SPLIT_DELIM_CAPTURE);
-    $out = '';
-    foreach ($parts as $i => $part) {
-        if ($part === '') {
-            continue;
-        }
-        if ($i % 2 === 1) {
-            $out .= '<code>' . h(substr($part, 1, -1)) . '</code>';
-            continue;
-        }
-        $out .= md_links($part, $exists, $link_refs);
-    }
-    return $out;
-}
+class SlateParsedown extends Parsedown {
+    /** id => true for the #NN ids known to name a project. */
+    protected array $knownRefs = [];
 
-/** [text](url) links in a code-free line; anything else falls through to emphasis. */
-function md_links(string $text, array $exists, bool $link_refs): string {
-    $parts = preg_split(MD_LINK_TEXT, $text, -1, PREG_SPLIT_DELIM_CAPTURE);
-    $out = '';
-    for ($i = 0; $i < count($parts); $i += 3) {
-        $out .= md_emph_refs($parts[$i], $exists, $link_refs);
-        if (!isset($parts[$i + 1], $parts[$i + 2])) {
-            continue;
-        }
-        [$label, $url] = [$parts[$i + 1], $parts[$i + 2]];
-        if ($label === '' || !md_url_allowed($url)) {
-            $out .= md_emph_refs("[$label]($url)", $exists, $link_refs);
-            continue;
-        }
-        // The label keeps emphasis but not references: see md_inline().
-        $out .= '<a href="' . h($url) . '">' . md_emph_refs($label, $exists, false) . '</a>';
-    }
-    return $out;
-}
+    public function __construct() {
+        // A '#' marker and its handler are the one thing the parser does not know about.
+        $this->InlineTypes['#'] = ['ProjectRef'];
+        $this->inlineMarkerList .= '#';
 
-/** **bold**, *italic* and #NN references in text known to hold no code and no link markup. */
-function md_emph_refs(string $text, array $exists, bool $link_refs = true): string {
-    $e = h($text);
-    $e = preg_replace('/\*\*\*(.+?)\*\*\*/', '<strong><em>$1</em></strong>', $e);
-    $e = preg_replace('/\*\*([^*<>]+?)\*\*/', '<strong>$1</strong>', $e);
-    $e = preg_replace('/(?<!\*)\*([^*\n<>]+?)\*(?!\*)/', '<em>$1</em>', $e);
-    // Underscores only on word boundaries: 2*3 stays maths and CTRL_REG stays a name.
-    $e = preg_replace('/(^|[^\w])__([^_\n<>]+?)__([^\w]|$)/', '$1<strong>$2</strong>$3', $e);
-    $e = preg_replace('/(^|[^\w])_([^_\n<>]+?)_([^\w]|$)/', '$1<em>$2</em>$3', $e);
-    if ($link_refs) {
-        $e = preg_replace_callback('/(^|[^\w])#(\d+)/', function ($m) use ($exists) {
-            $id = (int)$m[2];
-            if (!isset($exists[$id])) {
-                return $m[0];
-            }
-            return $m[1] . '<a href="/project/?id=' . $id . '">#' . $id . '</a>';
-        }, $e);
+        $this->setSafeMode(true)
+             ->setBreaksEnabled(true)
+             ->setUrlsLinked(true)
+             ->setStrictMode(true);
     }
-    return $e;
+
+    /** The ids whose #NN may become a link; called before text(). */
+    public function setKnownRefs(array $known): static {
+        $this->knownRefs = $known;
+        return $this;
+    }
+
+    /** #NN, when the id names a project and the # is on a word boundary. */
+    protected function inlineProjectRef($Excerpt) {
+        if (!preg_match('/^#(\d+)/', $Excerpt['text'], $m)) {
+            return null;
+        }
+        // The character before the marker: a word character (ABC#12) is not a reference.
+        $position = strlen($Excerpt['context']) - strlen($Excerpt['text']);
+        if ($position > 0 && preg_match('/\w/', $Excerpt['context'][$position - 1])) {
+            return null;
+        }
+        $id = (int)$m[1];
+        if (!isset($this->knownRefs[$id])) {
+            return null;
+        }
+        return [
+            'extent' => strlen($m[0]),
+            'element' => [
+                'name' => 'a',
+                'text' => '#' . $id,
+                'attributes' => ['href' => '/project/?id=' . $id],
+            ],
+        ];
+    }
+
+    /**
+     * A [text](url) link, refused unless md_url_allowed() trusts the scheme. Returning null
+     * makes Parsedown treat the whole `[text](url)` as text, which is what keeps a
+     * javascript: link from becoming an anchor. The label may keep emphasis, but not a nested
+     * #NN anchor: one target per link.
+     */
+    protected function inlineLink($Excerpt) {
+        $Inline = parent::inlineLink($Excerpt);
+        if (!isset($Inline['element']['attributes']['href'])) {
+            return $Inline;
+        }
+        if (!md_url_allowed($Inline['element']['attributes']['href'])) {
+            return null;
+        }
+        $Inline['element']['nonNestables'][] = 'ProjectRef';
+        return $Inline;
+    }
+
+    /**
+     * No images. An image in a comment would make every reader's browser fetch a remote URL the
+     * author chose, which is a tracking pixel by another name; the app never offered images and
+     * still does not. Refusing here leaves `![alt](url)` to fall through to an ordinary link,
+     * which is exactly what the previous renderer did with it.
+     */
+    protected function inlineImage($Excerpt) {
+        return null;
+    }
 }
 
 /**
- * One fenced block's inner text: the opening line's info string and the closing fence
- * are markup, the rest is literal code — escaped, never linked, line breaks kept as-is
- * rather than turned into <br>, since a <pre> already breaks them.
- */
-function md_fenced(string $block): string {
-    $inner = preg_replace('/\A```[^\n]*\n?/', '', $block);
-    $inner = preg_replace('/```[ \t]*\z/', '', $inner);
-    return '<pre><code>' . h(rtrim($inner ?? '', "\n")) . '</code></pre>';
-}
-
-/**
- * Escaped text with markdown and live references, then line breaks kept. $exists maps
+ * Parsedown's HTML for a text, with live #NN references and line breaks kept. $exists maps
  * id => anything for the ids known to name a project; left out, it is looked up.
  */
 function rich_text(string $text, ?array $exists = null): string {
@@ -777,70 +789,8 @@ function rich_text(string $text, ?array $exists = null): string {
         $ids = ref_ids_in_text($text);
         $exists = $ids ? array_flip(existing_project_ids($ids)) : [];
     }
-    // Fenced blocks first, so nothing inside one is read as markdown or as a reference.
-    $parts = preg_split('/(```.*?```)/s', $text, -1, PREG_SPLIT_DELIM_CAPTURE);
-    $out = [];
-    foreach ($parts as $i => $part) {
-        if ($part === '') {
-            continue;
-        }
-        if ($i % 2 === 1) {
-            $out[] = md_fenced($part);
-            continue;
-        }
-        // Lines group into lists and paragraphs; blank lines separate but render nothing.
-        $lines = preg_split('/\n/', $part);
-        $para = [];
-        $list = [];
-        $list_tag = '';
-        $flush_para = function () use (&$out, &$para, $exists): void {
-            if (!$para) {
-                return;
-            }
-            $items = array_map(fn($line) => md_inline($line, $exists), $para);
-            $out[] = '<p>' . implode('<br />', $items) . '</p>';
-            $para = [];
-        };
-        $flush_list = function () use (&$out, &$list, &$list_tag, $exists): void {
-            if (!$list) {
-                return;
-            }
-            $items = array_map(fn($line) => '<li>' . md_inline($line, $exists) . '</li>', $list);
-            $out[] = "<$list_tag>" . implode('', $items) . "</$list_tag>";
-            $list = [];
-            $list_tag = '';
-        };
-        foreach ($lines as $line) {
-            if (trim($line) === '') {
-                $flush_para();
-                $flush_list();
-                continue;
-            }
-            if (preg_match('/^\s*[-*]\s+(.*)$/', $line, $m)) {
-                $flush_para();
-                if ($list_tag !== 'ul') {
-                    $flush_list();
-                    $list_tag = 'ul';
-                }
-                $list[] = $m[1];
-                continue;
-            }
-            if (preg_match('/^\s*\d+[.)]\s+(.*)$/', $line, $m)) {
-                $flush_para();
-                if ($list_tag !== 'ol') {
-                    $flush_list();
-                    $list_tag = 'ol';
-                }
-                $list[] = $m[1];
-                continue;
-            }
-            $flush_list();
-            $para[] = $line;
-        }
-        $flush_para();
-        $flush_list();
-    }
-    return implode("\n", $out);
+    $parser = (new SlateParsedown())->setKnownRefs($exists);
+    return $parser->text($text);
 }
 
 // The "Last updated" line under the project form. It carries an id so the htmx endpoints that
@@ -913,7 +863,7 @@ function status_history_list(int $project_id): void {
         <label class="form-label" for="type">Type</label>
         <select class="form-select" id="type" name="type">
             <?php foreach (TYPES as $type => $label): ?>
-                <option value="<?= $type ?>"<?= $type === ($project?->type ?? '"task"') ? ' selected' : '' ?>><?= $label ?></option>
+                <option value="<?= $type ?>"<?= $type === ( $project?->type ?? "task" ) ? ' selected' : '' ?>><?= $label ?></option>
             <?php endforeach ?>
         </select>
     </div>

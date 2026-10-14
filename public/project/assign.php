@@ -21,10 +21,7 @@ if ($method !== 'GET' && $method !== 'POST') {
 require_login();
 
 $id = (int)($_REQUEST['id'] ?? 0);
-$p = project($id);
-if (!$p) {
-    bad('Project not found', 404);
-}
+$p = editable_project($id);   // an archived project is read-only, assignees included
 
 $q = trim((string)($_REQUEST['q'] ?? ''));
 

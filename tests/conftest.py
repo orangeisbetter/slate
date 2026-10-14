@@ -94,7 +94,7 @@ class App:
 @pytest.fixture(scope="session")
 def app(tmp_path_factory):
     tmp = tmp_path_factory.mktemp("slate")
-    for d in ("src", "public", "db", "bin"):
+    for d in ("src", "public", "db", "bin", "vendor"):
         shutil.copytree(ROOT / d, tmp / d)
     (tmp / "data").mkdir()
     subprocess.run(["php", "bin/migrate.php"], cwd=tmp, check=True, capture_output=True)

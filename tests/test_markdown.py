@@ -56,6 +56,39 @@ def test_single_newlines_still_break(signed_in, make_project):
     assert "<br />" in r.text
 
 
+def test_a_bare_url_becomes_a_link(signed_in, make_project):
+    """Card #62: a typed http(s):// URL is linked without bracket syntax."""
+    frag = frag_of(signed_in, make_project, "see https://example.com/x for details")
+    link = frag.select_one('a[href="https://example.com/x"]')
+    assert link is not None and link.get_text(strip=True) == "https://example.com/x"
+    frag = frag_of(signed_in, make_project, "and http://example.com/y too")
+    assert frag.select_one('a[href="http://example.com/y"]') is not None
+
+
+def test_autolinking_drops_trailing_punctuation(signed_in, make_project):
+    frag = frag_of(signed_in, make_project, "go to https://example.com/x.")
+    assert frag.select_one('a[href="https://example.com/x"]') is not None
+    assert "." in frag.get_text()
+
+
+def test_autolinking_leaves_code_alone(signed_in, make_project):
+    frag = frag_of(signed_in, make_project, "run `curl https://example.com/x` first")
+    assert frag.select_one('a[href="https://example.com/x"]') is None
+
+
+def test_autolinking_does_not_invent_links_from_hostnames(signed_in, make_project):
+    """Only explicit http(s):// schemes link; a bare hostname and a filename stay text."""
+    frag = frag_of(signed_in, make_project, "see www.example.com and index.php")
+    body = frag.select("div[id^=comment-] > div:last-child")[0]
+    assert body.select_one("a[href]") is None
+
+
+def test_the_description_autolinks_too(signed_in, make_project):
+    pid = make_project("Autolink description", description="docs at https://example.com/d")
+    desc = soup(signed_in.get(f"/project/?id={pid}")).select_one("#project-description")
+    assert desc.select_one('a[href="https://example.com/d"]') is not None
+
+
 def test_raw_html_stays_text(signed_in, make_project):
     frag = frag_of(signed_in, make_project, "<b>nope</b> and **yes**")
     assert frag.select_one("b") is None
@@ -101,3 +134,10 @@ def test_comments_and_descriptions_agree(signed_in, make_project):
     assert page.select_one("#project-description strong").get_text(strip=True) == "same"
     comment = page.select_one("#cms strong")
     assert comment is not None and comment.get_text(strip=True) == "same"
+
+
+def test_image_syntax_does_not_become_a_remote_fetch(signed_in, make_project):
+    """A comment must not make every reader's browser fetch a URL its author chose. The app
+    never turned image syntax into an <img> and still does not; it falls through as a link."""
+    frag = frag_of(signed_in, make_project, "![pixel](https://example.com/track.png)")
+    assert frag.select_one("img") is None

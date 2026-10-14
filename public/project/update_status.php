@@ -16,6 +16,13 @@ parse_str($raw_input, $data);
 $p = project((int)($data['id'] ?? 0));
 $st = $data['status'] ?? '';
 
+// An archived project is frozen: it has been retired, so its status must not move even though a
+// crafted PATCH can still name it. project() is used rather than editable_project() because an
+// unknown id keeps the old JSON echo below rather than becoming an error.
+if ($p && $p->archived) {
+    bad('This project is archived and cannot be changed', 409);
+}
+
 if ($p && status_exists($st) && $st !== $p->status) {
     q('UPDATE projects SET status = ?, updated_at = ? WHERE id = ?', [$st, gmdate('c'), $p->id]);
     logStatus($p->id, $p->status, $st, $me);

@@ -39,6 +39,18 @@ report('optional', ini_get('log_errors') ? 'on' : 'off', 'error logging',
            ? 'src/errors.php logs there; that is where a crash explains itself'
            : 'off — a crash will have no message to offer');
 
+echo "\nDependencies\n";
+// Parsedown renders markdown in comments and descriptions. Composer installs it into vendor/,
+// which is gitignored, so a fresh checkout that skipped `composer install` fails here rather than
+// on the first page carrying a comment.
+$autoload = $root . '/vendor/autoload.php';
+if (is_file($autoload)) {
+    require_once $autoload;
+}
+$have_parsedown = class_exists('Parsedown');
+report('required', $have_parsedown ? 'ok' : 'missing', 'parsedown',
+       $have_parsedown ? 'markdown in comments and descriptions' : 'run composer install', !$have_parsedown);
+
 echo "\nRequired extensions\n";
 foreach ([
     'pdo_sqlite' => 'the database',

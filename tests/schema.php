@@ -39,6 +39,13 @@ foreach (['id', 'name', 'email', 'password_hash', 'active'] as $column) {
     ok(in_array($column, $columns('users'), true), "users.$column");
 }
 
+echo "projects columns\n";
+// archived retires a project without destroying it; archived_at records when, since the retirement
+// is one-way. Migrations 011 and 012 add them.
+foreach (['id', 'title', 'status', 'type', 'archived', 'archived_at'] as $column) {
+    ok(in_array($column, $columns('projects'), true), "projects.$column");
+}
+
 echo "seeded roles\n";
 $roles = $db->query('SELECT slug FROM roles ORDER BY id')->fetchAll(PDO::FETCH_COLUMN);
 ok($roles === ['admin'], 'the only seeded role is admin (got: ' . implode(', ', $roles) . ')');

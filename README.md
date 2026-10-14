@@ -1,18 +1,19 @@
 # Slate
 
 A small project tracker: a dashboard, drag-and-drop boards, projects with assignees, comments,
-due dates and a status history. Plain PHP and SQLite, no build step, no dependencies to install.
+due dates and a status history. Plain PHP and SQLite, no build step, one Composer dependency.
 
 ## Requirements
 
 - PHP 8.1 or newer, with `pdo_sqlite` enabled
+- [Composer](https://getcomposer.org/), for the one library the app installs (Parsedown, the
+  markdown renderer); there is no build step and nothing else to install
 - A web server that can run PHP (any of nginx, Apache, Caddy, or PHP's own built-in server for
   trying it out)
 
-There is nothing to install. No Composer, no npm, no vendored libraries. Run `php bin/check.php` on
-any new machine, or after changing PHP version, to confirm all of that at once; it exits non-zero if
-something the app needs is missing, and it also reports the state of `data/board.db` and whether its
-migrations have been applied.
+Run `php bin/check.php` on any new machine, or after changing PHP version, to confirm all of that at
+once; it exits non-zero if something the app needs is missing — including the Composer tree — and it
+also reports the state of `data/board.db` and whether its migrations have been applied.
 
 `mbstring` is used when it is there and not required. Without it, search folds ASCII case only, so
 `GRÜN` will not match `grün`, and the length cap on a board name counts bytes, so accented names hit
@@ -29,13 +30,16 @@ point the `<link>`/`<script>` tags in `src/views.php` at them.
 
 ```sh
 git clone <this repo> slate && cd slate
+composer install          # Parsedown into vendor/; vendor/ is gitignored
 php bin/migrate.php
 ```
 
-`bin/migrate.php` creates `data/board.db`, applies every migration in `db/` that has not run yet,
-and prints what it did. It is safe to run again: migrations that have already been applied are
-skipped. Keep the `data/` directory writable by the user the web server runs as — it holds the
-database and nothing else, and nothing in it belongs in version control.
+`composer install` fetches the one library the app uses, [Parsedown](https://parsedown.org/), and
+writes it to `vendor/`, which is deliberately not committed. `bin/migrate.php` creates
+`data/board.db`, applies every migration in `db/` that has not run yet, and prints what it did. It is
+safe to run again: migrations that have already been applied are skipped. Keep the `data/` directory
+writable by the user the web server runs as — it holds the database and nothing else, and nothing in
+it belongs in version control.
 
 Point the web server's document root at **`public/`**, not at the repository root:
 
@@ -43,13 +47,24 @@ Point the web server's document root at **`public/`**, not at the repository roo
 server {
     root /srv/slate/public;
     index index.php;
+    error_page 404 /404.php;
     ...
 }
 ```
 
-This matters. `src/`, `db/`, `bin/`, `data/` and `tests/` all sit next to `public/` on purpose,
-outside the document root, so they are not reachable over HTTP. Serving the repository root would
-expose the database directory and the source.
+This matters. `src/`, `db/`, `bin/`, `data/`, `vendor/` and `tests/` all sit next to `public/` on
+purpose, outside the document root, so they are not reachable over HTTP. Serving the repository root
+would expose the database directory and the source.
+
+An unknown path never reaches PHP — the app has no front controller, and a URL is a fact about the
+filesystem — so the web server has to be told where the 404 page is. Apache, in the vhost:
+
+```
+ErrorDocument 404 /404.php
+```
+
+Both are internal subrequests, not redirects: the visitor keeps the address they typed and the answer
+carries a `404`, with `public/404.php`'s body.
 
 Finally open the site in a browser. The first visit to `/setup/` creates the first account, which
 becomes an admin. Once any account can sign in, `/setup/` closes itself.
@@ -225,7 +240,8 @@ silently, so the only honest test is to run it.
 public/     the document root: pages, endpoints, and assets, colocated
 src/        bootstrap, shared library, views, error handling
 db/         migrations, applied in filename order and recorded in schema_migrations
-bin/        migrate.php, backup.php
+bin/        migrate.php, backup.php, check.php
+vendor/     composer install output (Parsedown); gitignored, outside the document root
 tests/      the Python suite, schema checks, fixtures, drag.js
 data/       board.db, created by migrate.php, never committed
 ```
@@ -331,6 +347,27 @@ subtracts from its Open tile, what the list view leaves out of its default filte
 overdue styling gives up on — a finished project is not late, whatever its due date says. `done` and
 `cancelled` ship marked finished; that is the seeded default rather than a constant, and an install
 that finishes at `shipped` marks that one and leaves the rest.
+
+A finished project is still a project; retirement is the other flag. `projects.archived` records that
+a project has been retired, and archiving is the only way a project leaves the screens — there is no
+delete. That is deliberate: the destructive cascade to subprojects and comments destroyed the record
+of work that was simply over, so the option is gone and the flag takes its place. Archiving sets
+`archived` and `archived_at` and nothing else: the row, its subprojects, its comments, its status
+history and its board memberships all stay exactly where they are. Where it applies is every default
+view — the dashboard's tiles and assigned list, every board including the board page's own count,
+the list view's default filter, search, and the activity feed — so an archived project is gone from
+the screens without being gone from the database. It is not hidden from its own page, which still
+opens and wears an **Archived** badge, and it is not hidden from the parent that names it as a
+subproject. The list view's **Include archived** checkbox is the one view that asks for it, and it is
+where a retired project is read afterwards. Archiving is one-way: there is no Restore, the archive
+button carries a warning that it cannot be undone, and the project's own page says so. An archived
+project is also read-only — its status, fields, description, assignees, boards, comments and
+subprojects are all frozen, its page draws no control that would change any of them, and every
+mutating endpoint refuses an archived project (`editable_project()` in `src/lib.php`), so a crafted
+request fails the same way the button is simply absent. Nothing purges archived projects yet; a
+later review is expected to remove ones that have been archived for years, with an admin deciding,
+which is why `archived_at` is recorded now rather than backfilled later. Archiving does not cascade,
+so a subproject left active stays active — and stays editable.
 
 A board's columns are those statuses as panels, and the board says how it wants that one treated:
 **Always** draws the column even when it is empty, so there is always somewhere to drop a card;
@@ -487,6 +524,16 @@ complete page rather than a 200 with half of one, and `data/error.log` records w
 `SLATE_DEBUG=1` puts the detail on the page for development, and `php bin/check.php` says whether the
 PHP itself is set up to run the app.
 
+There is one error page, in `src/errors.php`, and everything that fails uses it. A browser request
+that `bad()` refuses — a bad date, an unknown id, the wrong method — gets that page with the status
+code; an htmx fragment gets the sentence as plain text instead, because htmx will not swap a non-2xx
+and the toast that app.js raises is where a fragment failure is seen. An uncaught error gets the same
+page as a 500, with a reference code and, under `SLATE_DEBUG`, the detail. The page is a standalone
+document with inline CSS rather than something `views.php` draws, because the failure it exists for is
+often the database or the templates themselves; a page that needed the database to render would fail
+exactly when it is needed most. A request for a path with no file behind it is answered by the web
+server, as above.
+
 ## Security posture
 
 Worth knowing before you expose this to anyone:
@@ -500,7 +547,11 @@ Worth knowing before you expose this to anyone:
   binding — one `id` cast to `int`, one list of generated `?` placeholders, and a sort key narrowed to
   two literals before it reaches the query — and none of them carry user text unescaped.
 - Output is escaped through `h()`; HTML is written into templates rather than assembled by string
-  concatenation.
+  concatenation. The one exception is markdown in comments and descriptions, which Parsedown renders
+  in safe mode: a source's own HTML is escaped rather than emitted, and a link only becomes an anchor
+  when `md_url_allowed()` accepts its scheme (http, https, or a root-relative path) — a bare
+  `http://`/`https://` URL is linked the same way, but a bare hostname is left as text. A `#NN`
+  project reference becomes a link to that project, but never inside code or inside another link.
 - **CSRF**: there are no per-form tokens. Instead, `src/bootstrap.php` checks every state-changing
   request against the headers a browser will not let another site forge — `Sec-Fetch-Site` must be
   `same-origin`, and failing that, `Origin` or `Referer` must start with this site's own origin. That

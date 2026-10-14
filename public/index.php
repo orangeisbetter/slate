@@ -4,8 +4,11 @@
 const SLATE_REQUIRE_LOGIN = true;
 require __DIR__ . '/../src/bootstrap.php';
 
+// Archived projects are not counted anywhere on this page: they have left the working set, and a
+// total that still includes them is a number nobody can act on. They are still reachable, and
+// restorable, through the list's archived view.
 $counts = [];                  // status => number of projects
-foreach (q('SELECT status, COUNT(*) AS n FROM projects GROUP BY status') as $row) {
+foreach (q('SELECT status, COUNT(*) AS n FROM projects WHERE archived=0 GROUP BY status') as $row) {
     $counts[$row['status']] = (int)$row['n'];
 }
 $total = array_sum($counts);
@@ -18,6 +21,7 @@ $open = $total - array_sum(array_map(fn($slug) => $counts[$slug] ?? 0, finished_
 $mine = q('SELECT p.* FROM projects p
            JOIN project_assignees pa ON pa.project_id = p.id
            WHERE pa.user_id = ?
+             AND p.archived=0
              AND NOT EXISTS (SELECT 1 FROM project_statuses s WHERE s.slug = p.status AND s.is_finished)
            ORDER BY p.status, p.due_date IS NULL, p.due_date, p.title', [$me])
     ->fetchAll(PDO::FETCH_CLASS | PDO::FETCH_PROPS_LATE, Project::class);
@@ -26,6 +30,7 @@ $mine = q('SELECT p.* FROM projects p
 $finished = (int)q('SELECT COUNT(*) FROM projects p
                     JOIN project_assignees pa ON pa.project_id = p.id
                     WHERE pa.user_id = ?
+                      AND p.archived=0
                       AND EXISTS (SELECT 1 FROM project_statuses s WHERE s.slug = p.status AND s.is_finished)',
                    [$me])->fetchColumn();
 

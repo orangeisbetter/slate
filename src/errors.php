@@ -88,36 +88,31 @@ set_exception_handler(function (Throwable $e): void {
         return;
     }
 
-    http_response_code(500);
-    header('Content-Type: text/html; charset=utf-8');
-    // htmx does not swap a response that is not 2xx, so this body is never read by a fragment
-    // request and cannot be how the reference reaches the browser. A header can: app.js shows it in a
-    // toast, which is the only way a failure inside a fragment request becomes visible at all.
-    header('X-Slate-Error: ' . $ref);
-
     // A locked database is the one failure a person can usefully retry, and with several people
     // saving at once it is the most likely one, so it gets a sentence instead of a reference.
     $busy = stripos($e->getMessage(), 'database is locked') !== false;
     $say = $busy
         ? 'The database was busy. Nothing was saved, so it is safe to try again.'
         : 'Something went wrong. Nothing was saved.';
-    $ref_line = $busy ? '' : sprintf('<p class="ref">Quote this reference: <code>%s</code></p>', h($ref));
+
+    // htmx does not swap a response that is not 2xx, so this body is never read by a fragment
+    // request and cannot be how the reference reaches the browser. A header can: app.js shows it in a
+    // toast, which is the only way a failure inside a fragment request becomes visible at all. So a
+    // fragment gets plain text, exactly as bad() answers one, and the header carries the reference.
+    if (isset($_SERVER['HTTP_HX_REQUEST'])) {
+        http_response_code(500);
+        header('Content-Type: text/plain');
+        header('X-Slate-Error: ' . $ref);
+        echo $say;
+        exit;
+    }
+
+    // Everything else gets the same page a 4xx from bad() gets, plus the reference and, under
+    // SLATE_DEBUG, the detail. One error page for the whole app.
     $detail = slate_debug()
         ? sprintf('<pre>%s</pre>', slate_escape($e->getMessage() . "\n\n" . $e->getTraceAsString()))
         : '';
-
-    // A complete document, closed, even though nothing else about it is: the suite holds every page
-    // Slate emits to the same standard, and an error page that ends mid-tag would train everyone
-    // to ignore that check exactly when it matters most.
-    echo '<!doctype html><html lang="en"><head><meta charset="utf-8">',
-         '<meta name="viewport" content="width=device-width, initial-scale=1">',
-         '<title>Something went wrong</title>',
-         '<style>body{font:16px/1.5 system-ui,sans-serif;max-width:34rem;margin:4rem auto;padding:0 1rem}',
-         '.ref{margin-top:1.5rem;font-size:.9rem;color:#666}',
-         'pre{white-space:pre-wrap;background:#f6f6f6;padding:1rem;border-radius:6px;font-size:.8rem}</style>',
-         '</head><body>',
-         '<h1>Something went wrong</h1><p>', slate_escape($say), '</p>', $ref_line, $detail,
-         '</body></html>';
+    slate_error_page(500, $say, $busy ? '' : $ref, $detail);
 });
 
 /**
@@ -126,4 +121,64 @@ set_exception_handler(function (Throwable $e): void {
  */
 function slate_escape(string $s): string {
     return htmlspecialchars($s, ENT_QUOTES);
+}
+
+/** The heading an error page carries for a status code, worded for a person rather than a log. */
+function slate_error_title(int $code): string {
+    return match ($code) {
+        400 => 'Bad request',
+        401 => 'Sign in required',
+        403 => 'Not allowed',
+        404 => 'Not found',
+        405 => 'Method not allowed',
+        409 => 'Conflict',
+        default => $code >= 500 ? 'Something went wrong' : 'Request refused',
+    };
+}
+
+/**
+ * The one error page, shared by bad() (4xx) and the 500 handler above.
+ *
+ * A complete standalone document with inline CSS, and deliberately not built from src/views.php:
+ * this is the page for when the database, the templates or the rest of src/ is what failed, so it
+ * cannot lean on any of them. It is the reason this file depends on nothing.
+ *
+ * $ref is the crash reference (empty for the errors a person can act on themselves), and $detail
+ * the SLATE_DEBUG block. Both are already escaped by the caller where they need to be.
+ */
+function slate_error_page(int $code, string $message, string $ref = '', string $detail = ''): never {
+    // Throw away whatever the page had managed to emit, so the answer is the error page and not a
+    // layout that stops halfway. Possible only while the response is still buffered.
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+    // Cannot be set once output has gone out on its own, which nothing here does.
+    if (!headers_sent()) {
+        http_response_code($code);
+        header('Content-Type: text/html; charset=utf-8');
+        if ($ref !== '') {
+            header('X-Slate-Error: ' . $ref);
+        }
+    }
+
+    $title = slate_error_title($code);
+    // One document, closed, even though nothing else about it is: the suite holds every page Slate
+    // emits to the same standard, and an error page that ends mid-tag would train everyone to ignore
+    // that check exactly when it matters most.
+    echo '<!doctype html><html lang="en"><head><meta charset="utf-8">',
+         '<meta name="viewport" content="width=device-width, initial-scale=1">',
+         '<title>', slate_escape($title), '</title>',
+         '<style>body{font:16px/1.5 system-ui,sans-serif;max-width:34rem;margin:4rem auto;padding:0 1rem}',
+         'h1{font-size:1.4rem;margin:0 0 1rem}',
+         '.ref{margin-top:1.5rem;font-size:.9rem;color:#666}',
+         'pre{white-space:pre-wrap;background:#f6f6f6;padding:1rem;border-radius:6px;font-size:.8rem}',
+         'a{color:#0d6efd}</style>',
+         '</head><body>',
+         '<h1>', slate_escape($title), '</h1>',
+         '<p>', slate_escape($message), '</p>',
+         $ref === '' ? '' : '<p class="ref">Quote this reference: <code>' . slate_escape($ref) . '</code></p>',
+         $detail,
+         '<p><a href="/index.php">Back to the dashboard</a></p>',
+         '</body></html>';
+    exit;
 }

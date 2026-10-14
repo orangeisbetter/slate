@@ -7,19 +7,13 @@ $id = (int)($_GET['id'] ?? 0);
 $b = board($id);
 
 if (!$b) {
-    http_response_code(404);
-    page_start('Not found');
-    ?>
-    <div class="page-wide mx-auto p-4">
-        <p>Board not found. <a href="/boards/">Back to boards</a></p>
-    </div>
-    <?php
-    page_end();
-    exit;
+    bad('Board not found', 404);
 }
 
-// data-board lets app.js tell move.php which board to re-render after a drag.
-$on_board = array_map('intval', q('SELECT project_id FROM project_boards WHERE board_id=?', [$id])
+// data-board lets app.js tell move.php which board to re-render after a drag. The count is of what
+// the board actually draws, so an archived project is not one of them.
+$on_board = array_map('intval', q('SELECT pb.project_id FROM project_boards pb JOIN projects p ON p.id=pb.project_id
+                                   WHERE pb.board_id=? AND p.archived=0', [$id])
                       ->fetchAll(PDO::FETCH_COLUMN));
 
 page_start($b->name);

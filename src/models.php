@@ -19,6 +19,8 @@ final class Project {
     public string $description = '';
     public string $status = '';
     public string $type = '';
+    public int $archived = 0;
+    public ?string $archived_at = null;
     public ?int $creator_id = null;
     public ?int $parent_id = null;
     public ?string $start_date = null;

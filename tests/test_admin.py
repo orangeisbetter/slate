@@ -349,4 +349,4 @@ def test_a_project_cannot_be_moved_onto_a_status_that_is_gone(app, signed_in, ma
     assert app.sql("select status from projects where id=?", pid) == [("todo",)], "the PATCH is ignored"
 
     r = signed_in.post("/new/add.php", data={"title": "Bad status", "status": scratch})
-    assert r.status_code == 400 and r.text.strip() == "Invalid status"
+    assert r.status_code == 400 and "Invalid status" in r.text
