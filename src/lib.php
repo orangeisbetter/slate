@@ -15,6 +15,19 @@ const PANEL_MODES = ['required' => 'Always', 'optional' => 'Only when it has pro
 // database, so a deleted status is not a column nothing can draw.
 const DEFAULT_PANEL_SLUGS = ['todo', 'in_progress', 'done'];
 const TYPES = ['task' => 'Task', 'bug' => 'Bug', 'feature' => 'Feature', 'epic' => 'Epic', 'research' => 'Research'];
+// The site themes a signed-in user can pick, keyed by the slug stored in users.theme. 'mode' is the
+// Bootstrap colour mode the <html> element is given: null keeps the light palette, 'dark' turns on
+// Bootstrap's own dark theme — a block of variable overrides plus the handful of component rules
+// (the select arrow, the close button) that go with it, which a stylesheet of our own could only
+// approximate. 'css' says the theme also has a stylesheet under public/assets/themes/, named after
+// the slug, layered over the palette for themes that want more than a colour. This is the whole
+// list: a slug that is not a key here can never reach a row, so deleting a theme cannot leave a
+// page naming one the app does not know how to draw.
+const THEMES = [
+    'default'   => ['label' => 'Default',   'mode' => null,   'css' => false],
+    'dark'      => ['label' => 'Dark',      'mode' => 'dark', 'css' => false],
+    'halloween' => ['label' => 'Halloween', 'mode' => 'dark', 'css' => true],
+];
 
 const MIN_PASSWORD = 10;              // characters
 const SESSION_LIFETIME = 14 * 86400;  // two weeks
@@ -43,7 +56,7 @@ function db_is_current(): bool {
     $needed_tables = ['users', 'projects', 'comments', 'status_log', 'roles', 'user_roles', 'invites',
                       'boards', 'project_boards', 'project_statuses'];
     return count(array_intersect($needed_tables, $tables)) === count($needed_tables)
-        && count(array_intersect(['email', 'password_hash', 'active'], $columns)) === 3;
+        && count(array_intersect(['email', 'password_hash', 'active', 'theme'], $columns)) === 4;
 }
 
 function q(string $sql, array $args = []): PDOStatement {
@@ -341,6 +354,23 @@ function user(int $id): ?User {
     $stmt = q('SELECT * FROM users WHERE id=?', [$id]);
     $stmt->setFetchMode(PDO::FETCH_CLASS | PDO::FETCH_PROPS_LATE, User::class);
     return $stmt->fetch() ?: null;
+}
+
+/** The theme behind a slug, falling back to the default for a slug that no longer names one. */
+function theme_row(string $slug): array {
+    return THEMES[$slug] ?? THEMES['default'];
+}
+
+/** Whether a theme slug names a theme the app knows how to draw. */
+function theme_exists(string $slug): bool {
+    return isset(THEMES[$slug]);
+}
+
+/** The theme a user has chosen, or 'default' when the slug stored on their row is gone. */
+function user_theme(int $id): string {
+    global $db;
+    $slug = (string)$db->query('SELECT theme FROM users WHERE id=' . (int)$id)->fetchColumn();
+    return theme_exists($slug) ? $slug : 'default';
 }
 
 function user_by_email(string $email): ?User {

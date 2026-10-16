@@ -75,14 +75,21 @@ function page_start(string $title, bool $nav = true): void {
     // page_end() is called by every page and knows nothing about this one, so whether the navbar is
     // there gets recorded rather than asked about again at the other end.
     $SLATE_NAV = $nav;
+    // The reader's theme decides the Bootstrap colour mode on <html> and, when it has one, an extra
+    // stylesheet after style.css. Signed out there is nobody who has chosen, so it is the default.
+    $theme_slug = $me ? user_theme((int)$me) : 'default';
+    $theme = theme_row($theme_slug);
     ?>
     <!doctype html>
-    <html lang="en">
+    <html lang="en"<?= $theme['mode'] ? ' data-bs-theme="' . h($theme['mode']) . '"' : '' ?>>
     <head>
         <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
         <title><?= h($title) ?></title>
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
         <link rel="stylesheet" href="/assets/style.css">
+        <?php if ($theme['css']): ?>
+            <link rel="stylesheet" href="/assets/themes/<?= h($theme_slug) ?>.css">
+        <?php endif ?>
         <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.4/dist/htmx.min.js"></script>
         <!-- For the Boards dropdown and the picker's add dialog; the rest is CSS and htmx. -->
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" defer></script>

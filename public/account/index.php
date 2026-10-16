@@ -13,6 +13,7 @@ $me_row = user($me);
 $error = $_GET['error'] ?? null;
 $saved = $_GET['saved'] ?? null;
 $slugs = roles($me);
+$theme_slug = user_theme($me);
 
 // The panes are switched with :target and :has() in public/assets/style.css. Every pane is in the
 // document and CSS shows one of them, so a tab is an ordinary fragment link and switching costs no
@@ -104,6 +105,33 @@ page_start('Your account');
                                         </span>
                                     <?php endforeach ?>
                                 <?php endif ?>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-lg-7">
+                        <div class="card">
+                            <div class="card-body">
+                                <h2 class="h5">Site theme</h2>
+                                <p class="text-body-secondary small">
+                                    How Slate looks to you. It is your own choice, and nobody else sees it.
+                                </p>
+                                <form method="post" action="/account/update_theme.php"
+                                      class="row g-2 align-items-end">
+                                    <div class="col-sm-8">
+                                        <label class="form-label" for="theme">Theme</label>
+                                        <select class="form-select" id="theme" name="theme">
+                                            <?php foreach (THEMES as $slug => $t): ?>
+                                                <option value="<?= h($slug) ?>"<?= $slug === $theme_slug ? ' selected' : '' ?>>
+                                                    <?= h($t['label']) ?>
+                                                </option>
+                                            <?php endforeach ?>
+                                        </select>
+                                    </div>
+                                    <div class="col-sm-4">
+                                        <button class="btn btn-primary w-100">Save</button>
+                                    </div>
+                                </form>
                             </div>
                         </div>
                     </div>

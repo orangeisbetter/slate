@@ -1,0 +1,29 @@
+/* Halloween: Bootstrap's dark palette with an autumn cast, plus a little decoration on the header.
+   Loaded after Bootstrap and after style.css, and scoped to [data-bs-theme=dark] — the colour mode
+   the theme asks for in src/lib.php — so it only ever layers over the dark theme. Deliberately
+   small: the card asked for pumpkins and scary things without overdoing it. */
+
+[data-bs-theme=dark] {
+  --bs-body-bg: #140f1e;              /* a night sky rather than Bootstrap's grey */
+  --bs-body-bg-rgb: 20, 15, 30;
+  --bs-tertiary-bg: #1c1430;
+  --bs-secondary-bg: #261a3d;
+  --bs-border-color: #3a2a55;
+  --bs-border-color-translucent: rgba(255, 255, 255, 0.12);
+  --bs-link-color: #f6a03c;
+  --bs-link-hover-color: #ffbe6b;
+  --bs-link-color-rgb: 246, 160, 60;
+  --bs-link-hover-color-rgb: 255, 190, 107;
+}
+
+/* An autumn glow behind the top of the page, fixed so it stays put as a long page scrolls. */
+body {
+  background-image: radial-gradient(60rem 30rem at 50% -12rem, #43285f 0%, rgba(20, 15, 30, 0) 60%);
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
+
+/* A jack-o'-lantern before the wordmark, and an orange rule under the header. Drawn rather than
+   served: a theme should not need an image the install has to carry. */
+.navbar-brand::before { content: "🎃"; margin-right: .35rem; }
+.navbar { border-bottom-color: #e8710a; }

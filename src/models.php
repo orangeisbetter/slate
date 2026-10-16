@@ -55,6 +55,7 @@ final class User {
     public ?string $password_hash = null;
     public ?int $active = null;
     public ?string $slack_id = null;
+    public string $theme = 'default';
     public bool $can_login = false;
     /** GROUP_CONCAT(r.slug) on the users list, null elsewhere. Use roleSlugs(). */
     public ?string $roles = null;

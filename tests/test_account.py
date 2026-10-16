@@ -106,6 +106,49 @@ def test_an_empty_name_is_refused_back_on_profile(signed_in):
     assert "A name is needed" in unquote(r.headers["Location"])
 
 
+# --- site theme ---------------------------------------------------------------------------------
+
+def test_the_theme_picker_is_on_profile(signed_in):
+    profile = soup(signed_in.get("/account/")).select_one("#tab-profile")
+    form = profile.select_one('form[action="/account/update_theme.php"]')
+    assert form, "the theme form is on the profile pane"
+    chosen = form.select_one("select[name=theme] option[selected]")
+    assert chosen and chosen["value"] == "default", "the seeded account is on the default theme"
+    assert soup(signed_in.get("/account/")).select_one("html").get("data-bs-theme") is None
+
+
+def test_choosing_a_theme_changes_the_page(app, signed_in):
+    """Changed and then put straight back: the session is shared, and a theme left on the seeded
+    admin would decide what every later test's pages carry."""
+    r = signed_in.post("/account/update_theme.php", data={"theme": "halloween"})
+    assert is_redirect(r) and r.headers["Location"].endswith("#tab-profile")
+
+    page = soup(signed_in.get("/account/"))
+    assert page.select_one('link[href="/assets/themes/halloween.css"]'), \
+        "the theme's own stylesheet is loaded"
+    assert page.select_one("html")["data-bs-theme"] == "dark", \
+        "the palette comes from Bootstrap's dark mode, not a hand-written copy"
+
+    signed_in.post("/account/update_theme.php", data={"theme": "default"})
+    page = soup(signed_in.get("/account/"))
+    assert page.select_one('link[href="/assets/themes/halloween.css"]') is None
+    assert page.select_one("html").get("data-bs-theme") is None
+
+
+def test_an_unknown_theme_is_refused(app, signed_in):
+    r = signed_in.post("/account/update_theme.php", data={"theme": "neon"})
+    assert "error=" in r.headers["Location"] and r.headers["Location"].endswith("#tab-profile")
+    assert "That is not a theme" in unquote(r.headers["Location"])
+    assert app.sql("select theme from users where id=1") == [("default",)]
+
+
+def test_the_theme_applies_to_every_page(app, signed_in):
+    """The header is on every page, so the theme is chosen once in page_start(), not per page."""
+    signed_in.post("/account/update_theme.php", data={"theme": "halloween"})
+    assert soup(signed_in.get("/index.php")).select_one("html")["data-bs-theme"] == "dark"
+    signed_in.post("/account/update_theme.php", data={"theme": "default"})
+
+
 def test_changing_the_password_returns_to_signin(signed_in):
     """Changed and then put straight back: the seeded password is what every other fixture signs
     in with, and one test changing it for the session would fail the whole rest of the suite."""
@@ -125,8 +168,9 @@ def test_a_wrong_current_password_is_refused_on_signin(signed_in):
     assert "That is not your current password" in unquote(r.headers["Location"])
 
 
-def test_the_three_endpoints_are_post_only(signed_in):
-    for path in ("/account/update_name.php", "/account/change_password.php", "/account/unlink_slack.php"):
+def test_the_account_endpoints_are_post_only(signed_in):
+    for path in ("/account/update_name.php", "/account/change_password.php",
+                 "/account/unlink_slack.php", "/account/update_theme.php"):
         assert signed_in.get(path).status_code == 405, f"{path} should be POST only"
 
 

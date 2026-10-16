@@ -15,6 +15,9 @@ markdown in descriptions and comments).
 - **Statuses** — configurable at `/admin/statuses/`: rename, reorder, mark finished or delete them.
   They are rows in `project_statuses`, not hard-coded.
 - **Accounts** — invites, roles and deactivation, all admin-only. Sign in with a password or Slack.
+- **Themes** — each account chooses its own look on `/account/`: the default, Bootstrap's dark mode,
+  or a little seasonal decoration. It is a palette, not a theme editor, and only the account that
+  chose it sees it.
 - **Archiving** — a project can be archived, which hides it from every default view and makes it
   read-only. The row, its comments and its history are kept.
 
