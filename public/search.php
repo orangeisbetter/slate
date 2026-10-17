@@ -20,10 +20,13 @@ if (isset($_SERVER['HTTP_HX_REQUEST'])) {
     search_menu($q, $hits);
     exit;
 } else {
-    $hits = search_projects($q);
+    // Everything, not the handful the menu offers, so the page is the honest answer to "what
+    // matches" — cut into pages so a broad word does not put the whole install on one screen. The
+    // match count drives the pages; the rows are the page asked for.
+    $matches = search_count($q);
+    $hits = search_projects($q, PAGE_SIZE, page_offset(page_number($matches)));
 }
 
-// Everything, not the handful the menu offers, so the page is the honest answer to "what matches".
 page_start($q === '' ? 'Search' : 'Search: ' . $q);
 ?>
 <div class="page-wide mx-auto p-3 p-md-4">
@@ -34,7 +37,7 @@ page_start($q === '' ? 'Search' : 'Search: ' . $q);
     <?php elseif (!$hits): ?>
         <div class="text-body-secondary">Nothing matches.</div>
     <?php else: ?>
-        <div class="text-body-secondary mb-2"><?= count($hits) ?> match<?= count($hits) === 1 ? '' : 'es' ?>.</div>
+        <div class="text-body-secondary mb-2"><?= $matches ?> match<?= $matches === 1 ? '' : 'es' ?>.</div>
         <div class="table-responsive card">
             <table class="table table-hover align-middle mb-0">
                 <thead><tr><th>#</th><th>Project</th><th>Type</th><th>Status</th></tr></thead>
@@ -50,6 +53,7 @@ page_start($q === '' ? 'Search' : 'Search: ' . $q);
                 </tbody>
             </table>
         </div>
+        <?php pagination($matches) ?>
     <?php endif ?>
 </div>
 <?php page_end(); ?>

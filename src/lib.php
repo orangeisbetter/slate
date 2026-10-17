@@ -31,6 +31,10 @@ const THEMES = [
 
 const MIN_PASSWORD = 10;              // characters
 const SESSION_LIFETIME = 14 * 86400;  // two weeks
+// Rows per page on the lists that would otherwise render everything. One number rather than a
+// per-page choice: every caller but the list view is a table nobody pages through deliberately, and
+// a page-size control is a second interface for the same question.
+const PAGE_SIZE = 25;
 const LOGIN_LIMIT = 8;                // failed attempts allowed per window
 const LOGIN_WINDOW = 900;             // ...within this many seconds
 
@@ -177,6 +181,37 @@ function ini(string $n): string {
 function go(string $url): never {
     header("Location: $url");
     exit;
+}
+
+// ---- pagination ----
+
+/**
+ * The page a request is asking for, clamped to what actually exists. Read before the rows are
+ * fetched, so the count comes first and the offset follows from it: past-the-end can then land on
+ * the last page instead of an empty one, which is what a stale link or a bookmark would otherwise
+ * show. $total of zero means "nothing to clamp against" and leaves the page as asked.
+ *
+ * $param is which query string key carries the page. More than one list can share a page (the
+ * users and invites tables do, and a project's comments and history), and each needs its own key or
+ * paging one would move the other.
+ */
+function page_number(int $total = 0, int $per_page = PAGE_SIZE, string $param = 'page'): int {
+    $page = (int)($_GET[$param] ?? 1);
+    if ($page < 1) {
+        $page = 1;
+    }
+    if ($total > 0 && $per_page > 0) {
+        $last = (int)ceil($total / $per_page);
+        if ($page > $last) {
+            $page = $last;
+        }
+    }
+    return $page;
+}
+
+/** How many rows a page of $per_page starts at. */
+function page_offset(int $page, int $per_page = PAGE_SIZE): int {
+    return ($page - 1) * $per_page;
 }
 // Refuses a request with a status code and a sentence. An htmx fragment gets the sentence as plain
 // text, which is what the toast path has always read; anything else gets the shared error page. The
@@ -516,15 +551,30 @@ function admin_count(bool $active_only = false): int {
     return (int)q($sql, [Role::Admin->value])->fetchColumn();
 }
 
-/** Every user with their roles, for the users page. can_login is false for name-only accounts. */
-function users_list(): array {
-    return q('SELECT u.id, u.name, u.email, u.active,
-                     u.password_hash IS NOT NULL AS can_login, GROUP_CONCAT(r.slug) AS roles
-              FROM users u
-              LEFT JOIN user_roles ur ON ur.user_id = u.id
-              LEFT JOIN roles r ON r.id = ur.role_id
-              GROUP BY u.id
-              ORDER BY u.active, u.name')->fetchAll(PDO::FETCH_CLASS | PDO::FETCH_PROPS_LATE, User::class);
+/**
+ * A page of users with their roles, for the users page. can_login is false for name-only accounts.
+ * $limit of zero means every user, which is what the callers that need the whole roll (pickers,
+ * counts) still ask for; the page passes one and pages through the result.
+ */
+function users_list(int $limit = 0, int $offset = 0): array {
+    $sql = 'SELECT u.id, u.name, u.email, u.active,
+                   u.password_hash IS NOT NULL AS can_login, GROUP_CONCAT(r.slug) AS roles
+            FROM users u
+            LEFT JOIN user_roles ur ON ur.user_id = u.id
+            LEFT JOIN roles r ON r.id = ur.role_id
+            GROUP BY u.id
+            ORDER BY u.active, u.name';
+    $args = [];
+    if ($limit > 0) {
+        $sql .= ' LIMIT ? OFFSET ?';
+        $args = [$limit, $offset];
+    }
+    return q($sql, $args)->fetchAll(PDO::FETCH_CLASS | PDO::FETCH_PROPS_LATE, User::class);
+}
+
+/** How many users there are, to size the pages the users list is cut into. */
+function users_count(): int {
+    return (int)q('SELECT COUNT(*) FROM users')->fetchColumn();
 }
 
 // ---- invites ----
@@ -556,11 +606,23 @@ function invite_by_token(string $token): ?Invite {
     return $invite;
 }
 
-function invites_list(): array {
-    return q('SELECT i.*, u.name AS created_by_name FROM invites i
-              LEFT JOIN users u ON u.id = i.created_by
-              WHERE i.accepted_at IS NULL
-              ORDER BY i.created_at DESC')->fetchAll(PDO::FETCH_CLASS | PDO::FETCH_PROPS_LATE, Invite::class);
+/** A page of outstanding invites; $limit of zero means all of them. */
+function invites_list(int $limit = 0, int $offset = 0): array {
+    $sql = 'SELECT i.*, u.name AS created_by_name FROM invites i
+            LEFT JOIN users u ON u.id = i.created_by
+            WHERE i.accepted_at IS NULL
+            ORDER BY i.created_at DESC';
+    $args = [];
+    if ($limit > 0) {
+        $sql .= ' LIMIT ? OFFSET ?';
+        $args = [$limit, $offset];
+    }
+    return q($sql, $args)->fetchAll(PDO::FETCH_CLASS | PDO::FETCH_PROPS_LATE, Invite::class);
+}
+
+/** How many invites are still outstanding, to size the pages on the users page. */
+function invites_count(): int {
+    return (int)q('SELECT COUNT(*) FROM invites WHERE accepted_at IS NULL')->fetchColumn();
 }
 
 function revoke_invite(string $token): void {
@@ -640,10 +702,11 @@ function board_status_counts(): array {
  * what "matches" means here, not rank: the rows stay in updated order, so two projects
  * matching the same words come back newest first rather than best first.
  *
- * $limit of 0 means every match, which is what the results page wants; the header box asks for a
- * handful instead. It has to be a missing clause rather than LIMIT 0, which asks for no rows at all
- * and would leave the page empty while the menu beside it worked. An empty query returns nothing
- * either way, so a cleared box goes quiet instead of listing the whole install.
+ * $limit of 0 means every match; the header box asks for a handful instead, and the results page
+ * passes a page's worth with its offset. It has to be a missing clause rather than LIMIT 0, which
+ * asks for no rows at all and would leave the page empty while the menu beside it worked. An empty
+ * query returns nothing either way, so a cleared box goes quiet instead of listing the whole
+ * install.
  *
  * A bare number, or one with a leading #, also finds that project by id, which is what makes the
  * number beside a title worth reading: it can be typed straight back in. That is a second clause
@@ -655,10 +718,40 @@ function board_status_counts(): array {
  * % and _ are escaped per keyword, so searching for them looks for them. Left alone they are
  * wildcards, and a query of "%" would come back with every project in it.
  */
-function search_projects(string $q, int $limit = 0): array {
+function search_projects(string $q, int $limit = 0, int $offset = 0): array {
+    $filter = search_filter($q);
+    if ($filter === null) {
+        return [];
+    }
+    [$where, $args] = $filter;
+    $cap = $limit > 0 ? ' LIMIT ? OFFSET ?' : '';
+    if ($cap !== '') {
+        $args[] = $limit;
+        $args[] = $offset;
+    }
+    return q("SELECT * FROM projects
+              WHERE archived=0 AND $where
+              ORDER BY updated_at DESC, id DESC" . $cap, $args)->fetchAll(PDO::FETCH_CLASS | PDO::FETCH_PROPS_LATE, Project::class);
+}
+
+/** How many projects a search would return, so the results page can size its pages. */
+function search_count(string $q): int {
+    $filter = search_filter($q);
+    if ($filter === null) {
+        return 0;
+    }
+    [$where, $args] = $filter;
+    return (int)q("SELECT COUNT(*) FROM projects WHERE archived=0 AND $where", $args)->fetchColumn();
+}
+
+/**
+ * The WHERE clause and bound arguments behind a search, shared by the rows and their count so the
+ * two cannot answer differently. Returns null for an empty query, which has no matches by design.
+ */
+function search_filter(string $q): ?array {
     $q = trim($q);
     if ($q === '') {
-        return [];
+        return null;
     }
     $by_id = preg_match('/^#?(\d+)$/', $q) ? (int)ltrim($q, '#') : null;
     $groups = [];
@@ -678,19 +771,13 @@ function search_projects(string $q, int $limit = 0): array {
     if ($by_id !== null) {
         $args[] = $by_id;
     }
-    $cap = $limit > 0 ? ' LIMIT ?' : '';
-    if ($cap !== '') {
-        $args[] = $limit;
-    }
     $where = '(' . implode(' AND ', $groups) . ')';
     if ($by_id !== null) {
         // Bracketed so the archived condition out front applies to it too: without this the id
         // branch is ORed past `archived=0` and a number would still surface an archived project.
         $where = "($where OR id = ?)";
     }
-    return q("SELECT * FROM projects
-              WHERE archived=0 AND $where
-              ORDER BY updated_at DESC, id DESC" . $cap, $args)->fetchAll(PDO::FETCH_CLASS | PDO::FETCH_PROPS_LATE, Project::class);
+    return [$where, $args];
 }
 
 /** Board ids for one project. Membership is independent per project, subprojects included. */

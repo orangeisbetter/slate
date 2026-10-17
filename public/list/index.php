@@ -110,22 +110,44 @@ $sql = <<<SQL
     ORDER BY p.{$sort}_at DESC, p.id DESC
 SQL;
 
-$all = q($sql, $params)->fetchAll(PDO::FETCH_CLASS | PDO::FETCH_PROPS_LATE, Project::class);
+// The count comes first so the page number can be clamped to what exists, and the same WHERE and
+// arguments drive both queries: a count that disagreed with the rows would put the last page out of
+// reach or leave it empty.
+$total = (int)q("SELECT COUNT(DISTINCT p.id) FROM projects p
+                 LEFT JOIN project_boards pb ON pb.project_id = p.id
+                 $where_sql", $params)->fetchColumn();
+$page = page_number($total);
+$all = q($sql . ' LIMIT ? OFFSET ?', array_merge($params, [PAGE_SIZE, page_offset($page)]))
+    ->fetchAll(PDO::FETCH_CLASS | PDO::FETCH_PROPS_LATE, Project::class);
 
+// Only the rows on this page are asked for, so the lookups below narrow to them rather than reading
+// the whole tables the way they did when every project was on the page.
+$page_ids = array_map(fn($p) => (int)$p->id, $all);
 $assignees = [];            // project id => user ids, so each name can be linked to its user
-foreach (q('SELECT * FROM project_assignees') as $row) {
-    $assignees[$row['project_id']][] = (int)$row['user_id'];
+if ($page_ids) {
+    $in = implode(',', array_fill(0, count($page_ids), '?'));
+    foreach (q("SELECT * FROM project_assignees WHERE project_id IN ($in)", $page_ids) as $row) {
+        $assignees[$row['project_id']][] = (int)$row['user_id'];
+    }
 }
 
-$parent_titles = []; foreach ($all as $p) { $parent_titles[$p->id] = $p->title; }
-$boards_by_project = boards_by_project(array_map(fn($p) => $p->id, $all));
+// Parent titles are looked up by the ids the page actually names, not read off the page's own rows:
+// a subproject whose parent sits on another page still has to say what it is inside.
+$parent_titles = [];
+$parent_ids = array_values(array_unique(array_filter(array_map(fn($p) => (int)($p->parent_id ?? 0), $all))));
+if ($parent_ids) {
+    $in = implode(',', array_fill(0, count($parent_ids), '?'));
+    $parent_titles = q("SELECT id, title FROM projects WHERE id IN ($in)", $parent_ids)->fetchAll(PDO::FETCH_KEY_PAIR);
+}
+
+$boards_by_project = boards_by_project($page_ids);
 
 page_start('All projects');
 ?>
 <div class="container-fluid p-3">
     <div class="d-flex align-items-center mb-3">
         <h1 class="h4 mb-0">All projects</h1>
-        <span class="ms-3 text-body-secondary small"><?= count($all) ?> total</span>
+        <span class="ms-3 text-body-secondary small"><?= $total ?> total</span>
         <div class="btn-group btn-group-sm ms-auto">
             <a class="btn btn-outline-secondary<?= $sort === 'updated' ? ' active' : '' ?>"
                href="/list/?sort=updated">Recently updated</a>
@@ -215,6 +237,7 @@ page_start('All projects');
             </tbody>
         </table>
     </div>
+    <?php pagination($total) ?>
 </div>
 <?php
 page_end();

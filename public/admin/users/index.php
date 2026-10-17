@@ -9,10 +9,16 @@ require __DIR__ . '/../../../src/bootstrap.php';
 
 require_admin();
 
+// Two tables share this page and page independently, so each asks for its own count and its own
+// page key: paging the users must not move the invites, and vice versa.
+$users_total = users_count();
+$users_page = page_number($users_total, PAGE_SIZE, 'page');
 /** @var User[] */
-$users = users_list();
+$users = users_list(PAGE_SIZE, page_offset($users_page));
 $labels_by_slug = q('SELECT slug, label FROM roles')->fetchAll(PDO::FETCH_KEY_PAIR);
-$invites = invites_list();
+$invites_total = invites_count();
+$invites_page = page_number($invites_total, PAGE_SIZE, 'ipage');
+$invites = invites_list(PAGE_SIZE, page_offset($invites_page));
 $new_token = $_GET['invite'] ?? null;
 
 page_start('Users');
@@ -133,6 +139,7 @@ page_start('Users');
             </table>
         </div>
     </div>
+    <?php pagination($users_total, PAGE_SIZE, 'page') ?>
 
     <h2 class="h5">Pending invitations</h2>
     <?php if (!$invites): ?>
@@ -168,9 +175,10 @@ page_start('Users');
                         </form>
                     </td>
                 </tr>
-            <?php endforeach ?>
+                <?php endforeach ?>
             </tbody>
         </table>
+        <?php pagination($invites_total, PAGE_SIZE, 'ipage') ?>
     <?php endif ?>
 
     <?php /* The content that fills each dialog arrives over htmx; the shells stay here empty. One of

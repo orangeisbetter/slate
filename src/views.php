@@ -251,6 +251,59 @@ function board_labels(array $board_ids): void {
     }
 }
 
+/**
+ * Bootstrap pagination for a list of $total rows, or nothing at all when they fit on one page.
+ *
+ * Every other query string parameter is carried along, so paging the list view keeps its board and
+ * status filters and paging a search keeps the words. $param names the page key, because two lists
+ * can share a page and each moving the other's key would make them fight. The links are ordinary
+ * anchors — no htmx — since a page of rows is a place worth being able to link to and reload.
+ */
+function pagination(int $total, int $per_page = PAGE_SIZE, string $param = 'page'): void {
+    $pages = (int)ceil($total / max(1, $per_page));
+    if ($pages <= 1) {
+        return;
+    }
+    $page = page_number($total, $per_page, $param);
+    $brief = 1;   // how many neighbours of the current page to name outright
+
+    $link = function (int $n, string $label, bool $disabled = false, bool $active = false) use ($param): void {
+        $query = $_GET;
+        $query[$param] = $n;
+        $url = (parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/')
+             . '?' . http_build_query($query);
+        $class = 'page-item' . ($disabled ? ' disabled' : '') . ($active ? ' active' : '');
+        if ($disabled) {
+            ?>
+            <li class="<?= $class ?>"><span class="page-link"><?= $label ?></span></li>
+            <?php
+        } else {
+            ?>
+            <li class="<?= $class ?>"><a class="page-link" href="<?= h($url) ?>"><?= $label ?></a></li>
+            <?php
+        }
+    };
+    ?>
+    <nav aria-label="Pagination" class="mt-3">
+        <ul class="pagination pagination-sm mb-0">
+            <?php
+            $link($page - 1, 'Previous', $page <= 1);
+            for ($n = 1; $n <= $pages; $n++) {
+                if ($n === 1 || $n === $pages || abs($n - $page) <= $brief) {
+                    $link($n, (string)$n, false, $n === $page);
+                } elseif (abs($n - $page) === $brief + 1) {
+                    ?>
+                    <li class="page-item disabled"><span class="page-link">…</span></li>
+                    <?php
+                }
+            }
+            $link($page + 1, 'Next', $page >= $pages);
+            ?>
+        </ul>
+    </nav>
+    <?php
+}
+
 // ---- picker options ----
 // The data behind the two pickers, and the only part of them that stays in this file: it is
 // matching, not markup. A picker's markup is written out where it is used, because the endpoint
