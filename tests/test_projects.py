@@ -74,7 +74,7 @@ def test_only_chosen_assignees_are_rows(page):
 # --- update ----------------------------------------------------------------------------------
 
 def test_update_changes_title_status_and_type(app, signed_in, project):
-    r = signed_in.post("/project/update.php", data={
+    r = signed_in.patch("/project/update.php", data={
         "id": project, "title": "Flow Test Renamed", "status": "review", "type": "research"})
     assert redirect_to(app, r) == f"/project/?id={project}"
 

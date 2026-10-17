@@ -4,19 +4,18 @@
 const SLATE_REQUIRE_LOGIN = true;
 require __DIR__ . '/../../../src/bootstrap.php';
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    bad('POST only', 405);
-}
+require_method('PATCH');
 $me = require_admin();
 
-$target = (int)($_POST['user_id'] ?? 0);
+$in = request_data();
+$target = (int)($in['user_id'] ?? 0);
 if (!user_exists($target)) {
     bad('No such user', 404);
 }
 
 // The posted state is read as an explicit yes or no rather than flipped from what it is now, so a
 // form submitted twice cannot undo the first submission by landing on the other end of a toggle.
-$posted = $_POST['active'] ?? '';
+$posted = $in['active'] ?? '';
 if ($posted !== '0' && $posted !== '1') {
     bad('Say whether the account should be active');
 }

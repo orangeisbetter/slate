@@ -4,5 +4,5 @@
 // assign.php and project_boards.php.
 const SLATE_REQUIRE_LOGIN = true;
 require __DIR__ . '/../../src/bootstrap.php';
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') bad('POST only', 405);
+require_method('PATCH');
 update_project_from_post();

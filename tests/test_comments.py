@@ -50,7 +50,7 @@ def test_author_can_edit_their_comment(app, make_project, signed_in):
     pid = make_project("Comment edit test")
     post_comment(signed_in, pid, body="orig typo")
     cid = app.sql("select id from comments where project_id=?", pid)[0][0]
-    r = signed_in.post("/project/comment_edit.php", headers=HTMX,
+    r = signed_in.patch("/project/comment_edit.php", headers=HTMX,
                        data={"comment_id": cid, "body": "fixed text"})
     assert "fixed text" in r.text
     assert "edited" in r.text
@@ -62,7 +62,7 @@ def test_author_can_delete_their_comment(app, make_project, signed_in):
     pid = make_project("Comment delete test")
     post_comment(signed_in, pid, body="bye")
     cid = app.sql("select id from comments where project_id=?", pid)[0][0]
-    r = signed_in.post("/project/comment_delete.php", headers=HTMX, data={"comment_id": cid})
+    r = signed_in.delete("/project/comment_delete.php", headers=HTMX, data={"comment_id": cid})
     assert "No comments yet" in r.text
     assert app.sql("select count(*) from comments where id=?", cid)[0][0] == 0
 
@@ -71,8 +71,8 @@ def test_non_author_cannot_change_a_comment(app, make_project, signed_in, member
     pid = make_project("Comment permission test")
     post_comment(signed_in, pid, body="admin words")
     cid = app.sql("select id from comments where project_id=?", pid)[0][0]
-    assert member.post("/project/comment_edit.php",
+    assert member.patch("/project/comment_edit.php",
                        data={"comment_id": cid, "body": "hijack"}).status_code == 403
-    assert member.post("/project/comment_delete.php",
+    assert member.delete("/project/comment_delete.php",
                        data={"comment_id": cid}).status_code == 403
     assert app.sql("select body from comments where id=?", cid)[0][0] == "admin words"

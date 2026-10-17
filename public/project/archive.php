@@ -6,12 +6,10 @@
 const SLATE_REQUIRE_LOGIN = true;
 require __DIR__ . '/../../src/bootstrap.php';
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    bad('POST only', 405);
-}
+require_method('PATCH');
 require_admin();
 
-$p = project((int)($_POST['id'] ?? 0));
+$p = project((int)(request_data()['id'] ?? 0));
 if (!$p) {
     bad('Project not found', 404);
 }

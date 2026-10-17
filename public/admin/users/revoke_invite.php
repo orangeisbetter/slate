@@ -3,10 +3,8 @@
 const SLATE_REQUIRE_LOGIN = true;
 require __DIR__ . '/../../../src/bootstrap.php';
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    bad('POST only', 405);
-}
+require_method('DELETE');
 require_admin();
 
-revoke_invite((string)($_POST['token'] ?? ''));
+revoke_invite((string)(request_data()['token'] ?? ''));
 go('/admin/users/');

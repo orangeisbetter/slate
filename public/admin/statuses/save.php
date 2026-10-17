@@ -1,19 +1,19 @@
 <?php
-// Admin only: creates a status, or edits one when an id is posted. The slug is set at creation and
+// Admin only: creates a status, or edits one when an id arrives. The slug is set at creation and
 // never changes after that — it is what is stored in projects.status, status_log and board_panels,
 // so renaming it would orphan every row that points at it. The label is the thing that changes.
 const SLATE_REQUIRE_LOGIN = true;
 require __DIR__ . '/../../../src/bootstrap.php';
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    bad('POST only', 405);
-}
+// POST creates, PATCH edits an existing one when an id arrives; posting the edit works too.
+require_method('PATCH');
 $me = require_admin();
 
-$id = (int)($_POST['id'] ?? 0);
-$label = trim((string)($_POST['label'] ?? ''));
-$tone = (string)($_POST['tone'] ?? 'secondary');
-$is_finished = isset($_POST['is_finished']) ? 1 : 0;
+$in = request_data();
+$id = (int)($in['id'] ?? 0);
+$label = trim((string)($in['label'] ?? ''));
+$tone = (string)($in['tone'] ?? 'secondary');
+$is_finished = isset($in['is_finished']) ? 1 : 0;
 
 /** Where the form comes back to, carrying why. */
 function statuses_error(string $msg): never {
@@ -43,7 +43,7 @@ if ($id) {
     q('UPDATE project_statuses SET label=?, tone=?, is_finished=? WHERE id=?',
       [$label, $tone, $is_finished, $id]);
 } else {
-    $slug = (string)($_POST['slug'] ?? '');
+    $slug = (string)($in['slug'] ?? '');
     $slug = $slug === '' ? status_slug_from_label($label) : lower(trim($slug));
     if ($slug === '' || !preg_match('/^[a-z][a-z0-9_]*$/', $slug)) {
         statuses_error('Slugs start with a letter and hold only letters, digits and underscores');

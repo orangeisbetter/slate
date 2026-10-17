@@ -5,12 +5,13 @@
 const SLATE_REQUIRE_LOGIN = true;
 require __DIR__ . '/../../src/bootstrap.php';
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    bad('POST only', 405);
-}
+// The posted set replaces the board's panels outright, which is what a PUT means; a plain form
+// reaches it by posting.
+require_method('PUT');
 $me = require_admin();
 
-$id = (int)($_POST['id'] ?? 0);
+$in = request_data();
+$id = (int)($in['id'] ?? 0);
 if (!$id || !board($id)) {
     bad('No such board', 404);
 }
@@ -18,7 +19,7 @@ if (!$id || !board($id)) {
 // One field per status, named panels[todo] and so on. Anything not named is left alone, and a status
 // that is not a column is refused rather than stored: the columns are panel_order(), which is every
 // status a project can hold, so a row for anything else could only ever be dead weight.
-$posted = $_POST['panels'] ?? [];
+$posted = $in['panels'] ?? [];
 if (!is_array($posted)) {
     bad('Panels are posted as a set', 400);
 }

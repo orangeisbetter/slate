@@ -84,7 +84,7 @@ def test_the_main_form_leaves_the_description_to_the_flip_card(signed_in, make_p
 
 def test_saving_the_description_redirects_to_the_page(app, signed_in, make_project):
     pid = make_project("Desc save")
-    r = signed_in.post("/project/description.php", data={"id": pid, "description": "fresh words"})
+    r = signed_in.patch("/project/description.php", data={"id": pid, "description": "fresh words"})
     assert r.status_code in (301, 302, 303, 307, 308)
     assert r.headers["Location"].endswith(f"/project/?id={pid}")
     assert app.sql("select description from projects where id=?", pid) == [("fresh words",)]
@@ -93,17 +93,17 @@ def test_saving_the_description_redirects_to_the_page(app, signed_in, make_proje
 
 def test_updating_the_project_keeps_an_absent_description(app, signed_in, make_project):
     pid = make_project("Desc kept", description="stays put")
-    signed_in.post("/project/update.php", data={"id": pid, "title": "Desc kept renamed"})
+    signed_in.patch("/project/update.php", data={"id": pid, "title": "Desc kept renamed"})
     assert app.sql("select description from projects where id=?", pid) == [("stays put",)]
 
 
 def test_updating_with_a_description_still_writes_it(app, signed_in, make_project):
     pid = make_project("Desc written", description="old")
-    signed_in.post("/project/update.php", data={"id": pid, "title": "Desc written", "description": "new"})
+    signed_in.patch("/project/update.php", data={"id": pid, "title": "Desc written", "description": "new"})
     assert app.sql("select description from projects where id=?", pid) == [("new",)]
 
 
 def test_description_endpoint_refuses_get_and_unknown_ids(signed_in, make_project):
     assert signed_in.get("/project/description.php").status_code == 405
-    r = signed_in.post("/project/description.php", data={"id": 999999, "description": "x"})
+    r = signed_in.patch("/project/description.php", data={"id": 999999, "description": "x"})
     assert r.status_code == 404

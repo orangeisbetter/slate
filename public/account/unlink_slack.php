@@ -7,9 +7,7 @@
 const SLATE_REQUIRE_LOGIN = true;
 require __DIR__ . '/../../src/bootstrap.php';
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    bad('POST only', 405);
-}
+require_method('DELETE');
 $me = require_login();
 
 $account = user($me);

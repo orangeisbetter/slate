@@ -9,12 +9,10 @@
 const SLATE_REQUIRE_LOGIN = true;
 require __DIR__ . '/../../../src/bootstrap.php';
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    bad('POST only', 405);
-}
+require_method('DELETE');
 require_admin();
 
-$id = (int)($_POST['id'] ?? 0);
+$id = (int)(request_data()['id'] ?? 0);
 $row = null;
 foreach (statuses() as $s) {
     if ((int)$s['id'] === $id) {

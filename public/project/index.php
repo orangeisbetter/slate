@@ -200,7 +200,7 @@ page_start($p->title);
 							<input type="hidden" name="as[]" value="<?= $uid ?>">
 						<span class="text-truncate"><?php user_link($uid, $u['label'] ?? 'Unknown') ?></span>
 							<button type="button" class="btn-close ms-auto" aria-label="Remove <?= h($u['label'] ?? 'person') ?>"
-									hx-post="/project/assign.php" hx-target="#people-form" hx-swap="innerHTML"
+									hx-patch="/project/assign.php" hx-target="#people-form" hx-swap="innerHTML"
 									hx-include="closest form, #picker-people-search" hx-vals='{"remove":<?= $uid ?>}'></button>
 						</div>
 					<?php endforeach ?>
@@ -229,7 +229,7 @@ page_start($p->title);
 									<?php foreach ($people_options as $oid => $o): ?>
 										<button type="button" class="w-100 text-start d-flex align-items-center gap-2 border rounded px-2 py-1 mb-1 bg-body<?= in_array((int)$oid, $assigned, true) ? ' d-none' : '' ?>"
 												data-picker-option data-value="<?= (int)$oid ?>"
-												hx-post="/project/assign.php" hx-target="#people-form" hx-swap="innerHTML"
+												hx-patch="/project/assign.php" hx-target="#people-form" hx-swap="innerHTML"
 												hx-include="#people-form, #picker-people-search" hx-vals='{"add":<?= (int)$oid ?>}'>
 											<span class="text-truncate"><?= h($o['label']) ?></span>
 											<?php if (!empty($o['sub'])): ?>
@@ -267,7 +267,7 @@ page_start($p->title);
 							<input type="hidden" name="boards[]" value="<?= $bid ?>">
 							<span class="text-truncate"><a class="link-quiet" href="/board/?id=<?= $bid ?>"><?= h($b['label'] ?? 'Unknown') ?></a></span>
 							<button type="button" class="btn-close ms-auto" aria-label="Remove <?= h($b['label'] ?? 'board') ?>"
-									hx-post="/project/project_boards.php" hx-target="#boards-form" hx-swap="innerHTML"
+									hx-patch="/project/project_boards.php" hx-target="#boards-form" hx-swap="innerHTML"
 									hx-include="closest form, #picker-boards-search" hx-vals='{"remove":<?= $bid ?>}'></button>
 						</div>
 					<?php endforeach ?>
@@ -296,7 +296,7 @@ page_start($p->title);
 									<?php foreach ($board_options as $oid => $o): ?>
 										<button type="button" class="w-100 text-start d-flex align-items-center gap-2 border rounded px-2 py-1 mb-1 bg-body<?= in_array((int)$oid, $board_ids, true) ? ' d-none' : '' ?>"
 												data-picker-option data-value="<?= (int)$oid ?>"
-												hx-post="/project/project_boards.php" hx-target="#boards-form" hx-swap="innerHTML"
+												hx-patch="/project/project_boards.php" hx-target="#boards-form" hx-swap="innerHTML"
 												hx-include="#boards-form, #picker-boards-search" hx-vals='{"add":<?= (int)$oid ?>}'>
 											<span class="text-truncate"><?= h($o['label']) ?></span>
 											<?php if (!empty($o['sub'])): ?>

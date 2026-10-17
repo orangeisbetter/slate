@@ -5,14 +5,14 @@
 const SLATE_REQUIRE_LOGIN = true;
 require __DIR__ . '/../../src/bootstrap.php';
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    bad('POST only', 405);
-}
+// The new password replaces the old one outright, which is what a PUT means; a plain form posts.
+require_method('PUT');
 $me = require_login();
 
 $account = user($me);
-$current = (string)($_POST['current'] ?? '');
-$password = (string)($_POST['password'] ?? '');
+$in = request_data();
+$current = (string)($in['current'] ?? '');
+$password = (string)($in['password'] ?? '');
 
 // Both outcomes land back on the Sign-in pane. The fragment is applied by the browser after
 // it follows the redirect, so the server does not need to be told which pane to render.
@@ -25,7 +25,7 @@ if (!check_password($current, $account->password_hash)) {
 if (strlen($password) < MIN_PASSWORD) {
     $refuse('A password needs at least ' . MIN_PASSWORD . ' characters');
 }
-if ($password !== (string)($_POST['password2'] ?? '')) {
+if ($password !== (string)($in['password2'] ?? '')) {
     $refuse('The two new passwords do not match');
 }
 

@@ -149,7 +149,7 @@ if (board) {
     e.preventDefault();
     clearOver();
     const id = e.dataTransfer.getData('text/plain');
-    if (id) htmx.ajax('POST', '/board/move.php', {target: '#board', swap: 'innerHTML',
+    if (id) htmx.ajax('PATCH', '/board/move.php', {target: '#board', swap: 'innerHTML',
                                                     values: {id, status: col.dataset.status, board: board.dataset.board}});
   });
 }

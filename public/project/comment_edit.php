@@ -1,7 +1,7 @@
 <?php
-// Edit a comment in place. GET draws the form as a page; POST saves it.
-// An htmx POST answers with the comment list, like comment.php next door, so the
-// edit lands without a reload; a plain POST redirects back to the project.
+// Edit a comment in place. GET draws the form as a page; PATCH saves it (a plain form posts).
+// An htmx PATCH answers with the comment list, like comment.php next door, so the
+// edit lands without a reload; a plain post redirects back to the project.
 const SLATE_REQUIRE_LOGIN = true;
 require __DIR__ . '/../../src/bootstrap.php';
 
@@ -41,11 +41,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     exit;
 }
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') bad('GET or POST only', 405);
-$c = comment_or_404((int)($_POST['comment_id'] ?? 0));
+require_method('PATCH');
+$in = request_data();
+$c = comment_or_404((int)($in['comment_id'] ?? 0));
 if (!can_edit_comment($me, $c->author_id)) bad('You cannot edit this comment', 403);
 editable_project($c->project_id);   // an archived project is read-only, comments included
-$body = trim($_POST['body'] ?? '');
+$body = trim($in['body'] ?? '');
 if ($body === '') bad('A comment needs a body');
 q('UPDATE comments SET body=?, edited_at=? WHERE id=?', [$body, gmdate('c'), $c->id]);
 q('UPDATE projects SET updated_at=? WHERE id=?', [gmdate('c'), $c->project_id]);

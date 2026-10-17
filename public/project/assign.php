@@ -3,27 +3,28 @@
 //
 // Two shapes of answer, both partial, because htmx is doing the work here:
 //
-//   POST  the form posts its own rows plus one add or remove, and gets the form's contents back
-//         to swap in, plus the dialog's list out of band so a person just picked stops being
-//         offered. Nothing in the answer contains a form or a dialog: both live on the page and
-//         have to survive the swap.
-//   GET   mode=options returns just the dialog's list, filtered by q. That is what the search
-//         box asks for, and it asks again each time the dialog opens.
+//   PATCH  the form sends its own rows plus one add or remove, and gets the form's contents back
+//          to swap in, plus the dialog's list out of band so a person just picked stops being
+//          offered. Nothing in the answer contains a form or a dialog: both live on the page and
+//          have to survive the swap. A plain form reaches the same endpoint by posting.
+//   GET    mode=options returns just the dialog's list, filtered by q. That is what the search
+//          box asks for, and it asks again each time the dialog opens.
 //
 // Without an HX-Request header it redirects instead, which is all a plain form post needs.
 const SLATE_REQUIRE_LOGIN = true;
 require __DIR__ . '/../../src/bootstrap.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
-if ($method !== 'GET' && $method !== 'POST') {
-    bad('GET or POST only', 405);
+if (!in_array($method, ['GET', 'POST', 'PATCH'], true)) {
+    bad('GET, POST or PATCH only', 405);
 }
 require_login();
 
-$id = (int)($_REQUEST['id'] ?? 0);
+$in = request_data();
+$id = (int)($in['id'] ?? 0);
 $p = editable_project($id);   // an archived project is read-only, assignees included
 
-$q = trim((string)($_REQUEST['q'] ?? ''));
+$q = trim((string)($in['q'] ?? ''));
 
 if ($method === 'GET') {
     $chosen = array_map('intval', $p->assignees ?? []);
@@ -32,7 +33,7 @@ if ($method === 'GET') {
         ?>
         <button type="button" class="w-100 text-start d-flex align-items-center gap-2 border rounded px-2 py-1 mb-1 bg-body<?= in_array((int)$uid, $chosen, true) ? ' d-none' : '' ?>"
                 data-picker-option data-value="<?= (int)$uid ?>"
-                hx-post="/project/assign.php" hx-target="#people-form" hx-swap="innerHTML"
+                hx-patch="/project/assign.php" hx-target="#people-form" hx-swap="innerHTML"
                 hx-include="#people-form, #picker-people-search" hx-vals='{"add":<?= (int)$uid ?>}'>
             <span class="text-truncate"><?= h($u['label']) ?></span>
             <?php if (!empty($u['sub'])): ?>
@@ -46,13 +47,13 @@ if ($method === 'GET') {
     exit;
 }
 
-// The posted rows, plus at most one change to them. hx-include sends the rows already in the
+// The sent rows, plus at most one change to them. hx-include sends the rows already in the
 // form, so a pick never has to invent an id the server did not already have.
-$ids = array_map('intval', (array)($_POST['as'] ?? []));
-if ($add = (int)($_POST['add'] ?? 0)) {
+$ids = array_map('intval', (array)($in['as'] ?? []));
+if ($add = (int)($in['add'] ?? 0)) {
     $ids[] = $add;
 }
-if ($drop = (int)($_POST['remove'] ?? 0)) {
+if ($drop = (int)($in['remove'] ?? 0)) {
     $ids = array_diff($ids, [$drop]);
 }
 // setAssignees has no check of its own and project_assignees points at users, so an id that is
@@ -77,7 +78,7 @@ $options = user_picker_options($q ?: null);
         <input type="hidden" name="as[]" value="<?= $uid ?>">
         <span class="text-truncate"><?php user_link($uid, $u['label'] ?? 'Unknown') ?></span>
         <button type="button" class="btn-close ms-auto" aria-label="Remove <?= h($u['label'] ?? 'person') ?>"
-                hx-post="/project/assign.php" hx-target="#people-form" hx-swap="innerHTML"
+                hx-patch="/project/assign.php" hx-target="#people-form" hx-swap="innerHTML"
                 hx-include="closest form, #picker-people-search" hx-vals='{"remove":<?= $uid ?>}'></button>
     </div>
 <?php endforeach ?>
@@ -90,7 +91,7 @@ $options = user_picker_options($q ?: null);
     <?php foreach ($options as $uid => $u): ?>
         <button type="button" class="w-100 text-start d-flex align-items-center gap-2 border rounded px-2 py-1 mb-1 bg-body<?= in_array((int)$uid, $chosen, true) ? ' d-none' : '' ?>"
                 data-picker-option data-value="<?= (int)$uid ?>"
-                hx-post="/project/assign.php" hx-target="#people-form" hx-swap="innerHTML"
+                hx-patch="/project/assign.php" hx-target="#people-form" hx-swap="innerHTML"
                 hx-include="#people-form, #picker-people-search" hx-vals='{"add":<?= (int)$uid ?>}'>
             <span class="text-truncate"><?= h($u['label']) ?></span>
             <?php if (!empty($u['sub'])): ?>

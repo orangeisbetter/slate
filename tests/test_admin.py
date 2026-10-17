@@ -67,8 +67,8 @@ def test_a_member_is_refused_everywhere_under_admin(member):
         assert member.get(path).status_code == 403, f"{path} should be admins only"
 
     assert member.post("/admin/statuses/save.php", data={"label": "Nope"}).status_code == 403
-    assert member.post("/admin/statuses/delete.php", data={"id": 1}).status_code == 403
-    assert member.post("/admin/statuses/move.php", data={"id": 1, "dir": "up"}).status_code == 403
+    assert member.delete("/admin/statuses/delete.php", data={"id": 1}).status_code == 403
+    assert member.patch("/admin/statuses/move.php", data={"id": 1, "dir": "up"}).status_code == 403
 
 
 def test_the_old_users_page_is_gone(signed_in, member):
@@ -238,21 +238,21 @@ def test_the_finished_statuses_leave_the_dashboards_open_count(app, signed_in):
 def test_up_and_down_swap_neighbours(app, signed_in, panel_order):
     todo = id_of(app, "todo")
 
-    signed_in.post("/admin/statuses/move.php", data={"id": todo, "dir": "up"})
+    signed_in.patch("/admin/statuses/move.php", data={"id": todo, "dir": "up"})
     assert order_of(app) == ["draft", "todo", "backlog"] + panel_order[3:]
 
-    signed_in.post("/admin/statuses/move.php", data={"id": todo, "dir": "down"})
+    signed_in.patch("/admin/statuses/move.php", data={"id": todo, "dir": "down"})
     assert order_of(app) == panel_order
 
 
 def test_moving_the_first_one_up_changes_nothing(app, signed_in, panel_order):
-    signed_in.post("/admin/statuses/move.php", data={"id": id_of(app, panel_order[0]), "dir": "up"})
+    signed_in.patch("/admin/statuses/move.php", data={"id": id_of(app, panel_order[0]), "dir": "up"})
     assert order_of(app) == panel_order
 
 
 def test_move_is_post_only_and_takes_a_direction(signed_in):
     assert signed_in.get("/admin/statuses/move.php").status_code == 405
-    assert signed_in.post("/admin/statuses/move.php", data={"id": 1, "dir": "sideways"}).status_code == 400
+    assert signed_in.patch("/admin/statuses/move.php", data={"id": 1, "dir": "sideways"}).status_code == 400
 
 
 # --- deleting -----------------------------------------------------------------------------------
@@ -276,9 +276,9 @@ def scratch(signed_in):
 def test_a_status_with_nothing_on_it_is_deleted(app, signed_in, scratch):
     sid = id_of(app, scratch)
     board = app.sql("select id from boards order by id limit 1")[0][0]
-    signed_in.post("/boards/save_panels.php", data={"id": board, f"panels[{scratch}]": "required"})
+    signed_in.put("/boards/save_panels.php", data={"id": board, f"panels[{scratch}]": "required"})
 
-    r = signed_in.post("/admin/statuses/delete.php", data={"id": sid})
+    r = signed_in.delete("/admin/statuses/delete.php", data={"id": sid})
 
     assert redirect_to(app, r) == "/admin/statuses/"
     assert app.sql("select count(*) from project_statuses where id=?", sid) == [(0,)]
@@ -290,7 +290,7 @@ def test_a_status_with_projects_on_it_is_refused(app, signed_in, make_project, s
     sid = id_of(app, scratch)
     pid = make_project("On scratch", status=scratch)
 
-    r = signed_in.post("/admin/statuses/delete.php", data={"id": sid})
+    r = signed_in.delete("/admin/statuses/delete.php", data={"id": sid})
 
     assert "still on Scratch" in unquote(r.headers["Location"])
     assert app.sql("select count(*) from project_statuses where id=?", sid) == [(1,)], "the status stays"
@@ -302,7 +302,7 @@ def test_the_refusal_says_how_many(app, signed_in, make_project, scratch):
     make_project("One", status=scratch)
     make_project("Two", status=scratch)
 
-    r = signed_in.post("/admin/statuses/delete.php", data={"id": sid})
+    r = signed_in.delete("/admin/statuses/delete.php", data={"id": sid})
     assert "2 projects are still on Scratch" in unquote(r.headers["Location"])
 
 
@@ -311,7 +311,7 @@ def test_once_the_last_project_has_moved_off_it_can_be_deleted(app, signed_in, m
     pid = make_project("Leaving", status=scratch)
 
     signed_in.patch("/project/update_status.php", data={"id": pid, "status": "todo"})
-    r = signed_in.post("/admin/statuses/delete.php", data={"id": sid})
+    r = signed_in.delete("/admin/statuses/delete.php", data={"id": sid})
 
     assert redirect_to(app, r) == "/admin/statuses/"
     assert app.sql("select count(*) from project_statuses where id=?", sid) == [(0,)]
@@ -322,7 +322,7 @@ def test_deleting_a_status_keeps_the_history_that_names_it(app, signed_in, make_
     delete. The entry still renders, with the slug standing in for the label that is gone."""
     pid = make_project("Historical", status=scratch)
     signed_in.patch("/project/update_status.php", data={"id": pid, "status": "todo"})
-    signed_in.post("/admin/statuses/delete.php", data={"id": id_of(app, scratch)})
+    signed_in.delete("/admin/statuses/delete.php", data={"id": id_of(app, scratch)})
 
     page = signed_in.get(f"/project/?id={pid}")
     assert page.status_code == 200
@@ -334,8 +334,8 @@ def test_delete_is_post_only(signed_in):
 
 
 def test_an_unknown_status_is_404(signed_in):
-    assert signed_in.post("/admin/statuses/delete.php", data={"id": 99999}).status_code == 404
-    assert signed_in.post("/admin/statuses/move.php", data={"id": 99999, "dir": "up"}).status_code == 404
+    assert signed_in.delete("/admin/statuses/delete.php", data={"id": 99999}).status_code == 404
+    assert signed_in.patch("/admin/statuses/move.php", data={"id": 99999, "dir": "up"}).status_code == 404
 
 
 # --- a deleted status cannot be set again --------------------------------------------------------
@@ -343,7 +343,7 @@ def test_an_unknown_status_is_404(signed_in):
 def test_a_project_cannot_be_moved_onto_a_status_that_is_gone(app, signed_in, make_project, scratch):
     pid = make_project("Move test", status=scratch)
     signed_in.patch("/project/update_status.php", data={"id": pid, "status": "todo"})
-    signed_in.post("/admin/statuses/delete.php", data={"id": id_of(app, scratch)})
+    signed_in.delete("/admin/statuses/delete.php", data={"id": id_of(app, scratch)})
 
     signed_in.patch("/project/update_status.php", data={"id": pid, "status": scratch})
     assert app.sql("select status from projects where id=?", pid) == [("todo",)], "the PATCH is ignored"

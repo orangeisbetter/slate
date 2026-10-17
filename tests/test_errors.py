@@ -56,7 +56,7 @@ def test_an_htmx_refusal_stays_plain_text(signed_in):
 def test_a_board_drag_of_an_unknown_project_is_refused(signed_in):
     """Card #58: a drag answers a bad id the way the status dropdown does, not by silently
     re-rendering the board as though the move had happened."""
-    r = signed_in.post("/board/move.php", data={"id": 999999, "status": "todo", "board": "0"},
+    r = signed_in.patch("/board/move.php", data={"id": 999999, "status": "todo", "board": "0"},
                        headers={"HX-Request": "true"})
     assert r.status_code == 404
     assert r.text.strip() == "Project not found"

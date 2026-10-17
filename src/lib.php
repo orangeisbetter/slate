@@ -183,6 +183,45 @@ function go(string $url): never {
     exit;
 }
 
+// ---- request methods ----
+
+/**
+ * The request's parameters, whichever verb carried them. PHP fills $_POST only for POST, so a PUT,
+ * PATCH or DELETE body is parsed here; the query string is merged in either way, so one call site
+ * reads one array whether the client sent its fields in the URL or the body — which is the only
+ * thing that differs between a plain form post and htmx reaching the same endpoint.
+ */
+function request_data(): array {
+    static $data = null;
+    if ($data !== null) {
+        return $data;
+    }
+    $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+    $data = $_GET;
+    if ($method === 'POST') {
+        $data = array_merge($data, $_POST);
+    } elseif (in_array($method, ['PUT', 'PATCH', 'DELETE'], true)) {
+        parse_str((string)file_get_contents('php://input'), $body);
+        $data = array_merge($data, $body);
+    }
+    return $data;
+}
+
+/**
+ * Refuses the request unless it arrived as POST or one of $verbs. POST is accepted everywhere: it
+ * is the only mutation verb a plain HTML form can send, so a browser without htmx reaches an
+ * endpoint whose real verb is PUT, PATCH or DELETE by posting to it, and that is the same call
+ * rather than a second thing the endpoint has to mean.
+ */
+function require_method(string ...$verbs): void {
+    $method = $_SERVER['REQUEST_METHOD'] ?? '';
+    if ($method === 'POST' || in_array($method, $verbs, true)) {
+        return;
+    }
+    $allowed = implode(' or ', array_unique(array_merge(['POST'], $verbs)));
+    bad($allowed . ' only', 405);
+}
+
 // ---- pagination ----
 
 /**
@@ -345,26 +384,27 @@ function create_project_from_post(int $creator): never {
  */
 function update_project_from_post(): never {
     global $me;
-    $title = trim($_POST['title'] ?? '');
+    $in = request_data();
+    $title = trim($in['title'] ?? '');
     if ($title === '') {
         bad('Title is required');
     }
-    $id = (int)($_POST['id'] ?? 0);
+    $id = (int)($in['id'] ?? 0);
     $existing = editable_project($id);
-    $st = $_POST['status'] ?? $existing->status;
+    $st = $in['status'] ?? $existing->status;
     if (!status_exists($st)) {
         bad('Invalid status');
     }
-    $type = $_POST['type'] ?? $existing->type;
+    $type = $in['type'] ?? $existing->type;
     if (!isset(TYPES[$type])) {
         bad('Invalid type');
     }
-    $start = validDate($_POST['start_date'] ?? '');
-    $due = validDate($_POST['due_date'] ?? '');
+    $start = validDate($in['start_date'] ?? '');
+    $due = validDate($in['due_date'] ?? '');
     $now = gmdate('c');
     // The project page edits the description through its own flip card, so the field is absent
     // there: an absent field keeps what is stored, or every title edit would blank the text.
-    $desc = array_key_exists('description', $_POST) ? ($_POST['description'] ?? '') : $existing->description;
+    $desc = array_key_exists('description', $in) ? ($in['description'] ?? '') : $existing->description;
     q('UPDATE projects SET title=?,description=?,status=?,type=?,start_date=?,due_date=?,updated_at=? WHERE id=?',
       [$title, $desc, $st, $type, $start, $due, $now, $id]);
     if ($st !== $existing->status) {

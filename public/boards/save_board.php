@@ -1,16 +1,17 @@
 <?php
-// Admin only: creates a board, or renames one when an id is posted.
+// Admin only: creates a board, or renames one when an id arrives. PUT renames and POST creates,
+// but a plain form posts either way, and so the verb is not what tells the two apart: the id is.
 const SLATE_REQUIRE_LOGIN = true;
 require __DIR__ . '/../../src/bootstrap.php';
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    bad('POST only', 405);
-}
+// PUT renames a board; POST creates one (or renames, from a plain form without an id).
+require_method('PUT');
 $me = require_admin();
 
-$id = (int)($_POST['id'] ?? 0);
-$name = trim((string)($_POST['name'] ?? ''));
-$description = trim((string)($_POST['description'] ?? ''));
+$in = request_data();
+$id = (int)($in['id'] ?? 0);
+$name = trim((string)($in['name'] ?? ''));
+$description = trim((string)($in['description'] ?? ''));
 
 if ($name === '') {
     go('/boards/?error=' . rawurlencode('A board needs a name'));

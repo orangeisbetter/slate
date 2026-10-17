@@ -13,10 +13,10 @@ CASES = [
     ("bad type",             "POST", "/new/add.php",              {"title": "x", "type": "nope"},         "Invalid type",             400),
     ("missing parent",       "POST", "/new/add.php",              {"title": "x", "parent_id": "9999"},    "Parent project not found", 404),
     ("get on add",           "GET",  "/new/add.php",              None,                                   "POST only",                405),
-    ("get on update",        "GET",  "/project/update.php",       None,                                   "POST only",                405),
+    ("get on update",        "GET",  "/project/update.php",       None,                                   "POST or PATCH only",       405),
     ("get on assign",        "GET",  "/project/assign.php",       None,                                   "Project not found",        404),
     ("unknown project",      "POST", "/project/assign.php",       {"id": "9999"},                         "Project not found",        404),
-    ("update needs an id",   "POST", "/project/update.php",       {"title": "x"},                         "Project not found",        404),
+    ("update needs an id",   "PATCH","/project/update.php",       {"title": "x"},                         "Project not found",        404),
     ("update blank title",   "POST", "/project/update.php",       {"id": "9999"},                         "Title is required",        400),
     ("status needs PATCH",   "POST", "/project/update_status.php", {"id": "1", "status": "done"},         "PATCH only",               405),
 ]

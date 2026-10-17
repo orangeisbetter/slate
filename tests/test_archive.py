@@ -45,7 +45,7 @@ def subject(app, signed_in, make_project):
     """
     title = f"Archive subject {next(_counter)}"
     pid = make_project(title, assignees=[1])
-    r = signed_in.post("/project/archive.php", data={"id": pid})
+    r = signed_in.patch("/project/archive.php", data={"id": pid})
     assert is_redirect(r)
     yield title, pid
     _unarchive(app, pid)
@@ -99,7 +99,7 @@ def test_archived_project_leaves_a_board_it_was_on(app, signed_in, make_project,
     request.addfinalizer(lambda: _unarchive(app, pid))
 
     assert "On a board" in text(signed_in, f"/board/?id={board}")
-    signed_in.post("/project/archive.php", data={"id": pid})
+    signed_in.patch("/project/archive.php", data={"id": pid})
     assert "On a board" not in text(signed_in, f"/board/?id={board}")
 
 
@@ -129,7 +129,7 @@ def test_archiving_is_one_way(app, signed_in, subject):
 
 def test_posting_the_old_unarchive_state_does_not_bring_it_back(app, signed_in, subject):
     title, pid = subject
-    signed_in.post("/project/archive.php", data={"id": pid, "archived": "0"})
+    signed_in.patch("/project/archive.php", data={"id": pid, "archived": "0"})
     assert app.sql("select archived from projects where id=?", pid) == [(1,)]
     assert title not in text(signed_in, "/list/")
 
@@ -137,7 +137,7 @@ def test_posting_the_old_unarchive_state_does_not_bring_it_back(app, signed_in, 
 def test_re_archiving_does_not_move_the_date(app, signed_in, subject):
     title, pid = subject
     (before,) = app.sql("select archived_at from projects where id=?", pid)[0]
-    signed_in.post("/project/archive.php", data={"id": pid})
+    signed_in.patch("/project/archive.php", data={"id": pid})
     assert app.sql("select archived_at from projects where id=?", pid) == [(before,)]
 
 
@@ -168,13 +168,13 @@ def test_the_page_offers_only_archive(app, signed_in, make_project):
 
 def test_a_member_may_not_archive(app, member):
     pid = app.sql("select id from projects order by id limit 1")[0][0]
-    r = member.post("/project/archive.php", data={"id": pid})
+    r = member.patch("/project/archive.php", data={"id": pid})
     assert r.status_code == 403
     assert app.sql("select archived from projects where id=?", pid) == [(0,)]
 
 
 def test_an_anonymous_visitor_is_sent_to_sign_in(anon):
-    r = anon.post("/project/archive.php", data={"id": 1})
+    r = anon.patch("/project/archive.php", data={"id": 1})
     assert r.status_code == 302
 
 
@@ -183,7 +183,7 @@ def test_archive_is_post_only(signed_in):
 
 
 def test_an_unknown_project_is_404(signed_in):
-    assert signed_in.post("/project/archive.php", data={"id": 999999}).status_code == 404
+    assert signed_in.patch("/project/archive.php", data={"id": 999999}).status_code == 404
 
 
 # --- an archived project is read-only -----------------------------------------------------------
@@ -191,7 +191,7 @@ def test_an_unknown_project_is_404(signed_in):
 def test_the_status_cannot_change(app, signed_in, archivable):
     title, pid = archivable
     was = app.sql("select status from projects where id=?", pid)[0][0]
-    signed_in.post("/project/archive.php", data={"id": pid})
+    signed_in.patch("/project/archive.php", data={"id": pid})
 
     assert signed_in.patch("/project/update_status.php",
                            data={"id": pid, "status": "done"}).status_code == 409
@@ -201,54 +201,54 @@ def test_the_status_cannot_change(app, signed_in, archivable):
 def test_a_board_drag_cannot_change_the_status(app, signed_in, archivable):
     title, pid = archivable
     was = app.sql("select status from projects where id=?", pid)[0][0]
-    signed_in.post("/project/archive.php", data={"id": pid})
+    signed_in.patch("/project/archive.php", data={"id": pid})
 
-    r = signed_in.post("/board/move.php", data={"id": pid, "status": "done", "board": "0"})
+    r = signed_in.patch("/board/move.php", data={"id": pid, "status": "done", "board": "0"})
     assert r.status_code == 409
     assert app.sql("select status from projects where id=?", pid) == [(was,)]
 
 
 def test_the_description_cannot_change(app, signed_in, archivable):
     title, pid = archivable
-    signed_in.post("/project/archive.php", data={"id": pid})
+    signed_in.patch("/project/archive.php", data={"id": pid})
 
-    r = signed_in.post("/project/description.php", data={"id": pid, "description": "changed"})
+    r = signed_in.patch("/project/description.php", data={"id": pid, "description": "changed"})
     assert r.status_code == 409
     assert app.sql("select description from projects where id=?", pid) != [("changed",)]
 
 
 def test_the_fields_cannot_change(app, signed_in, archivable):
     title, pid = archivable
-    signed_in.post("/project/archive.php", data={"id": pid})
+    signed_in.patch("/project/archive.php", data={"id": pid})
 
-    r = signed_in.post("/project/update.php", data={"id": pid, "title": "Renamed"})
+    r = signed_in.patch("/project/update.php", data={"id": pid, "title": "Renamed"})
     assert r.status_code == 409
     assert app.sql("select title from projects where id=?", pid) == [(title,)]
 
 
 def test_the_assignees_cannot_change(app, signed_in, archivable):
     title, pid = archivable
-    signed_in.post("/project/archive.php", data={"id": pid})
+    signed_in.patch("/project/archive.php", data={"id": pid})
     before = app.sql("select user_id from project_assignees where project_id=? order by user_id", pid)
 
-    assert signed_in.post("/project/assign.php", data={"id": pid, "add": 2}).status_code == 409
+    assert signed_in.patch("/project/assign.php", data={"id": pid, "add": 2}).status_code == 409
     after = app.sql("select user_id from project_assignees where project_id=? order by user_id", pid)
     assert after == before
 
 
 def test_the_boards_cannot_change(app, signed_in, archivable):
     title, pid = archivable
-    signed_in.post("/project/archive.php", data={"id": pid})
+    signed_in.patch("/project/archive.php", data={"id": pid})
     before = app.sql("select board_id from project_boards where project_id=? order by board_id", pid)
 
-    assert signed_in.post("/project/project_boards.php", data={"id": pid, "add": 1}).status_code == 409
+    assert signed_in.patch("/project/project_boards.php", data={"id": pid, "add": 1}).status_code == 409
     after = app.sql("select board_id from project_boards where project_id=? order by board_id", pid)
     assert after == before
 
 
 def test_no_new_subproject_under_an_archived_parent(app, signed_in, archivable):
     title, pid = archivable
-    signed_in.post("/project/archive.php", data={"id": pid})
+    signed_in.patch("/project/archive.php", data={"id": pid})
     before = app.sql("select count(*) from projects where parent_id=?", pid)
 
     r = signed_in.post("/project/add.php", data={"parent_id": pid, "title": "Child"})
@@ -258,7 +258,7 @@ def test_no_new_subproject_under_an_archived_parent(app, signed_in, archivable):
 
 def test_no_new_comment_on_an_archived_project(app, signed_in, archivable):
     title, pid = archivable
-    signed_in.post("/project/archive.php", data={"id": pid})
+    signed_in.patch("/project/archive.php", data={"id": pid})
     before = app.sql("select count(*) from comments where project_id=?", pid)
 
     r = signed_in.post("/project/comment.php", data={"id": pid, "body": "nope"})
@@ -270,18 +270,18 @@ def test_a_comment_cannot_be_edited_or_deleted(app, signed_in, archivable):
     title, pid = archivable
     signed_in.post("/project/comment.php", headers=HTMX, data={"id": pid, "body": "original"})
     cid = app.sql("select id from comments where project_id=? order by id desc limit 1", pid)[0][0]
-    signed_in.post("/project/archive.php", data={"id": pid})
+    signed_in.patch("/project/archive.php", data={"id": pid})
 
-    assert signed_in.post("/project/comment_edit.php", headers=HTMX,
+    assert signed_in.patch("/project/comment_edit.php", headers=HTMX,
                           data={"comment_id": cid, "body": "changed"}).status_code == 409
-    assert signed_in.post("/project/comment_delete.php", headers=HTMX,
+    assert signed_in.delete("/project/comment_delete.php", headers=HTMX,
                           data={"comment_id": cid}).status_code == 409
     assert app.sql("select body from comments where id=?", cid) == [("original",)]
 
 
 def test_the_page_shows_no_control_that_would_change_it(app, signed_in, archivable):
     title, pid = archivable
-    signed_in.post("/project/archive.php", data={"id": pid})
+    signed_in.patch("/project/archive.php", data={"id": pid})
     page = soup(signed_in.get(f"/project/?id={pid}"))
 
     assert page.select_one('select[name="status"]') is None, "no status picker"
@@ -308,7 +308,7 @@ def test_an_editable_project_still_offers_them(app, signed_in, archivable):
 def test_comments_lose_their_edit_and_delete_when_archived(app, signed_in, archivable):
     title, pid = archivable
     signed_in.post("/project/comment.php", headers=HTMX, data={"id": pid, "body": "keep me"})
-    signed_in.post("/project/archive.php", data={"id": pid})
+    signed_in.patch("/project/archive.php", data={"id": pid})
     page = soup(signed_in.get(f"/project/?id={pid}"))
 
     assert "keep me" in text_of(page)

@@ -3,21 +3,21 @@
 const SLATE_REQUIRE_LOGIN = true;
 require __DIR__ . '/../../../src/bootstrap.php';
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    bad('POST only', 405);
-}
+// The posted roles replace the set outright, which is what a PUT means; a plain form posts.
+require_method('PUT');
 require_admin();
 
-$target = (int)($_POST['user_id'] ?? 0);
+$in = request_data();
+$target = (int)($in['user_id'] ?? 0);
 if (!user_exists($target)) {
     bad('No such user', 404);
 }
 
 // The form posts role ids; anything not in the roles table is discarded, so a
-// hand-rolled POST cannot invent one.
+// hand-rolled request cannot invent one.
 $id_to_slug = q('SELECT id, slug FROM roles')->fetchAll(PDO::FETCH_KEY_PAIR);
 $wanted = [];
-foreach ((array)($_POST['roles'] ?? []) as $posted) {
+foreach ((array)($in['roles'] ?? []) as $posted) {
     $slug = $id_to_slug[(int)$posted] ?? null;
     if ($slug !== null) {
         $wanted[] = $slug;

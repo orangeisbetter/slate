@@ -27,7 +27,7 @@ def assignees(app, pid):
 
 def test_posting_a_new_set_replaces_the_old_one(app, signed_in, make_project):
     pid = make_project("Replace test", assignees=[1, 3])
-    r = signed_in.post("/project/assign.php", data={"id": pid, "as[]": [2, 4]})
+    r = signed_in.patch("/project/assign.php", data={"id": pid, "as[]": [2, 4]})
     assert is_redirect(r)
     assert redirect_to(app, r) == f"/project/?id={pid}"
 
@@ -63,31 +63,31 @@ def test_search_says_so_when_nothing_matches(signed_in, project):
 def test_a_pick_saves_and_returns_only_the_rows(app, signed_in, project):
     """add=1 with no as[] replaces the set with just user 1: the form posts its current rows
     alongside add, so a bare add means 'the set is empty, plus this person'."""
-    r = signed_in.post("/project/assign.php", headers=HTMX, data={"id": project, "add": 1})
+    r = signed_in.patch("/project/assign.php", headers=HTMX, data={"id": project, "add": 1})
     frag = soup(r)
 
     assert picker_rows(frag) == ["1"]
     assert assignees(app, project) == [1], "the rest should be replaced, not added to"
 
 
-def test_the_fragments_buttons_post_to_an_absolute_path(signed_in, project):
+def test_the_fragments_buttons_patch_an_absolute_path(signed_in, project):
     """Pages live at different depths, so a bare assign.php would resolve to /assign.php and 404.
     The page and the fragment are rendered by different files, so the page alone proves nothing."""
-    frag = soup(signed_in.post("/project/assign.php", headers=HTMX, data={"id": project, "add": 1}))
-    posts = [el["hx-post"] for el in frag.select("[hx-post]")]
-    assert posts, "no buttons in the fragment"
-    assert set(posts) == {"/project/assign.php"}
+    frag = soup(signed_in.patch("/project/assign.php", headers=HTMX, data={"id": project, "add": 1}))
+    patches = [el["hx-patch"] for el in frag.select("[hx-patch]")]
+    assert patches, "no buttons in the fragment"
+    assert set(patches) == {"/project/assign.php"}
 
 
 def test_the_fragment_is_not_page_furniture(signed_in, project):
     """A form or a second dialog in the swap would duplicate ids on the page."""
-    frag = soup(signed_in.post("/project/assign.php", headers=HTMX, data={"id": project, "add": 1}))
+    frag = soup(signed_in.patch("/project/assign.php", headers=HTMX, data={"id": project, "add": 1}))
     assert frag.find("form") is None
     assert not frag.select(".modal")
 
 
 def test_the_dialogs_list_is_refreshed_out_of_band(signed_in, project):
-    frag = soup(signed_in.post("/project/assign.php", headers=HTMX, data={"id": project, "add": 1}))
+    frag = soup(signed_in.patch("/project/assign.php", headers=HTMX, data={"id": project, "add": 1}))
     oob = frag.select_one("#picker-people-options")
     assert oob is not None and oob.get("hx-swap-oob") == "true"
     picked = picker_options(oob)["1"]
@@ -96,7 +96,7 @@ def test_the_dialogs_list_is_refreshed_out_of_band(signed_in, project):
 
 def test_remove_drops_one_and_keeps_the_rest(app, signed_in, project):
     # [assumption] mirrors project_boards.php, where boards[]=a&boards[]=b&remove=b keeps a.
-    signed_in.post("/project/assign.php", headers=HTMX,
+    signed_in.patch("/project/assign.php", headers=HTMX,
                    data={"id": project, "as[]": [2, 4], "remove": 2})
     assert assignees(app, project) == [4]
 

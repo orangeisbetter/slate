@@ -700,7 +700,7 @@ function render_comments(int $project_id): void {
                         <a href="/project/comment_edit.php?id=<?= (int)$comment->id ?>">Edit</a>
                         <form method="post" action="/project/comment_delete.php" class="d-inline"
                               onsubmit="return confirm('Delete this comment?')"
-                              hx-post="/project/comment_delete.php" hx-target="#cms" hx-swap="innerHTML">
+                              hx-delete="/project/comment_delete.php" hx-target="#cms" hx-swap="innerHTML">
                             <input type="hidden" name="comment_id" value="<?= (int)$comment->id ?>">
                             <button type="submit" class="btn btn-link btn-sm p-0 align-baseline">Delete</button>
                         </form>

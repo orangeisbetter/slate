@@ -1,10 +1,10 @@
 <?php
-// Delete a comment. A full-page mutation, so a plain POST redirects back; an htmx
-// POST answers with the comment list, like comment.php next door.
+// Delete a comment. A full-page mutation, so a plain post redirects back; an htmx
+// DELETE answers with the comment list, like comment.php next door.
 const SLATE_REQUIRE_LOGIN = true;
 require __DIR__ . '/../../src/bootstrap.php';
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') bad('POST only', 405);
-$cid = (int)($_POST['comment_id'] ?? 0);
+require_method('DELETE');
+$cid = (int)(request_data()['comment_id'] ?? 0);
 $stmt = q('SELECT * FROM comments WHERE id=?', [$cid]);
 $stmt->setFetchMode(PDO::FETCH_CLASS | PDO::FETCH_PROPS_LATE, Comment::class);
 $c = $stmt->fetch();

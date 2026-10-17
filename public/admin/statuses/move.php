@@ -5,13 +5,12 @@
 const SLATE_REQUIRE_LOGIN = true;
 require __DIR__ . '/../../../src/bootstrap.php';
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    bad('POST only', 405);
-}
+require_method('PATCH');
 require_admin();
 
-$id = (int)($_POST['id'] ?? 0);
-$dir = $_POST['dir'] ?? '';
+$in = request_data();
+$id = (int)($in['id'] ?? 0);
+$dir = $in['dir'] ?? '';
 if ($dir !== 'up' && $dir !== 'down') {
     bad('Move up or down', 400);
 }
