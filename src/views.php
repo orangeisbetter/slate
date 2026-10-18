@@ -85,14 +85,17 @@ function page_start(string $title, bool $nav = true): void {
     <head>
         <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
         <title><?= h($title) ?></title>
-        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+        <!-- Bootstrap and htmx are served from public/assets/vendor/ rather than a CDN: no third
+             party sees who reads a page, no request can fail because somebody else's host is down,
+             and nothing is executed without being the exact file committed here. -->
+        <link href="/assets/vendor/bootstrap.min.css" rel="stylesheet">
         <link rel="stylesheet" href="/assets/style.css">
         <?php if ($theme['css']): ?>
             <link rel="stylesheet" href="/assets/themes/<?= h($theme_slug) ?>.css">
         <?php endif ?>
-        <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.4/dist/htmx.min.js"></script>
+        <script src="/assets/vendor/htmx.min.js"></script>
         <!-- For the Boards dropdown and the picker's add dialog; the rest is CSS and htmx. -->
-        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" defer></script>
+        <script src="/assets/vendor/bootstrap.bundle.min.js" defer></script>
         <!-- defer: the picker and the board need the markup above them, and htmx above that. -->
         <script src="/assets/app.js" defer></script>
     </head>
@@ -719,8 +722,9 @@ function render_comments(int $project_id): void {
 //
 // Markdown itself is Parsedown (card #61, replacing the hand-rolled engine of card #44). The
 // app's additions are layered on a subclass rather than a second pass over the HTML: safe mode
-// escapes any HTML in the source, single newlines stay line breaks, a bare #NN becomes a project
-// link, and a link target is only trusted when md_url_allowed() accepts its scheme.
+// escapes any HTML in the source, single newlines stay line breaks, and a bare #NN becomes a
+// project link. Bracket links are not offered at all — see SlateParsedown::inlineLink() — so the
+// only anchors a body can produce are those two, whose label always repeats the target.
 //
 // A reference is a # preceded by start-of-text or a non-word character, so ABC#12 is not one.
 // Inside backtick code (spans and fenced blocks) #12 is code and stays plain text: Parsedown
@@ -747,24 +751,16 @@ function existing_project_ids(array $ids): array {
     return array_map('intval', q("SELECT id FROM projects WHERE id IN ($in)", $ids)->fetchAll(PDO::FETCH_COLUMN));
 }
 
-/** Whether a markdown link target may become a href. Relative only from the root. */
-function md_url_allowed(string $url): bool {
-    if (preg_match('#^https?://[^\s<>"\']+$#i', $url)) {
-        return true;
-    }
-    return (bool)preg_match('#^/(?!/)[^\s<>"\']*$#', $url);
-}
-
 /**
  * Parsedown, configured for the app.
  *
- * Safe mode is what keeps a source's own HTML as text rather than markup, and it also runs every
- * link through a scheme check; inlineLink() below is the stricter gate the app wants. Breaks are
- * on so a single newline is still a line break, and a bare http:// or https:// URL becomes a link
- * on its own (card #62) — but only those two schemes, and only outside code, since that is all
- * Parsedown's URL handler recognises; a bare hostname is left as text. Strict mode is the
- * CommonMark rule that an ATX heading needs a space after its #, which is what lets a bare "#12"
- * reach the reference handler below instead of turning into an <h1>.
+ * Safe mode is what keeps a source's own HTML as text rather than markup; inlineLink() below
+ * refuses bracket links outright on top of it. Breaks are on so a single newline is still a line
+ * break, and a bare http:// or https:// URL becomes a link on its own (card #62) — but only those
+ * two schemes, and only outside code, since that is all Parsedown's URL handler recognises; a bare
+ * hostname is left as text. Strict mode is the CommonMark rule that an ATX heading needs a space
+ * after its #, which is what lets a bare "#12" reach the reference handler below instead of
+ * turning into an <h1>.
  */
 class SlateParsedown extends Parsedown {
     /** id => true for the #NN ids known to name a project. */
@@ -812,28 +808,22 @@ class SlateParsedown extends Parsedown {
     }
 
     /**
-     * A [text](url) link, refused unless md_url_allowed() trusts the scheme. Returning null
-     * makes Parsedown treat the whole `[text](url)` as text, which is what keeps a
-     * javascript: link from becoming an anchor. The label may keep emphasis, but not a nested
-     * #NN anchor: one target per link.
+     * No bracket links, with any form of the syntax: `[text](url)`, `[text][ref]`, even a bare
+     * `[text]` shortcut. Returning null leaves the whole construct as literal text, so a body can
+     * never name its own label while pointing somewhere else — the shape a phishing link inside a
+     * trusted comment is. The anchors that remain are only bare http(s) URLs (setUrlsLinked, whose
+     * text is the target itself) and #NN project refs (whose text is #NN), both of which say
+     * exactly where they go.
      */
     protected function inlineLink($Excerpt) {
-        $Inline = parent::inlineLink($Excerpt);
-        if (!isset($Inline['element']['attributes']['href'])) {
-            return $Inline;
-        }
-        if (!md_url_allowed($Inline['element']['attributes']['href'])) {
-            return null;
-        }
-        $Inline['element']['nonNestables'][] = 'ProjectRef';
-        return $Inline;
+        return null;
     }
 
     /**
      * No images. An image in a comment would make every reader's browser fetch a remote URL the
      * author chose, which is a tracking pixel by another name; the app never offered images and
-     * still does not. Refusing here leaves `![alt](url)` to fall through to an ordinary link,
-     * which is exactly what the previous renderer did with it.
+     * still does not. Refusing here leaves `![alt](url)` to fall through as text (the bracket
+     * link behind it is refused too), so the body reads back with its source intact.
      */
     protected function inlineImage($Excerpt) {
         return null;

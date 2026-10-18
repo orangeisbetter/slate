@@ -143,6 +143,23 @@ def test_a_new_status_is_created_with_a_slug_derived_from_its_label(app, signed_
     assert app.sql("select count(*) from project_statuses") == [(before[0][0] + 1,)]
 
 
+def test_a_status_label_is_escaped_on_every_surface(app, signed_in):
+    """The label is admin-written text and renders as itself, not as markup — on every surface at
+    once, because escaping lives in status_label() rather than in whichever call site remembers.
+    The & also proves nothing escapes twice: that would read back as &amp;amp;."""
+    make_status(signed_in, label="<b>R&D</b>", slug="escaped_label", tone="info")
+
+    pid = new_project(signed_in, "Escape probe")
+    project_page = signed_in.get(f"/project/?id={pid}").text
+    assert "&lt;b&gt;R&amp;D&lt;/b&gt;" in project_page
+    assert "<b>R&D</b>" not in project_page
+    assert "&amp;amp;" not in project_page, "the label was escaped twice"
+
+    list_page = signed_in.get("/list/").text
+    assert "&lt;b&gt;R&amp;D&lt;/b&gt;" in list_page
+    assert "<b>R&D</b>" not in list_page
+
+
 def test_a_new_status_is_offered_everywhere_statuses_are(app, signed_in, panel_order):
     make_status(signed_in, label="Waiting on QA", tone="info")
 

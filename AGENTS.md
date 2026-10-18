@@ -93,6 +93,11 @@ called from `src/bootstrap.php`, covers it).
   through the API in `src/lib.php` (`statuses()`, `panel_order()`, `status_label()`,
   `status_is_finished()`…). Never hardcode a slug list, a `done` check or an order — that is what
   this codebase just finished removing.
+- **`status_label()` returns HTML-escaped text.** Do not wrap it in `h()` (that escapes twice), and
+  where a raw label is needed — e.g. a tile that `h()`s everything itself — read the row directly.
+- **The frontend libraries are vendored.** Bootstrap and htmx live in `public/assets/vendor/` and
+  are committed with the code; never point a template back at a CDN. Response headers (frame
+  protection, nosniff, HSTS on TLS) are set once by `slate_security_headers()` in `src/errors.php`.
 - **Pages include `../src/bootstrap.php`** and call `require_login()`/`require_admin()`; every
   state-changing endpoint checks `REQUEST_METHOD` and answers 405 for the wrong one, 404 for an
   unknown id. Redirect back with `?saved=`/`?error=` plus a fragment naming the tab.

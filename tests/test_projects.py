@@ -112,11 +112,22 @@ def test_the_projects_own_status_is_selected(signed_in, make_project):
 
 # --- PATCH status (what a drag or the dropdown sends) ----------------------------------------
 
-def test_patch_status_echoes_the_payload_and_persists(app, signed_in, make_project):
+def test_patch_status_echoes_the_stored_state_and_persists(app, signed_in, make_project):
     pid = make_project("Patch test")
     r = signed_in.patch("/project/update_status.php", data={"id": pid, "status": "in_progress"})
+    assert r.headers["Content-Type"].startswith("application/json")
     assert r.json() == {"id": str(pid), "status": "in_progress"}
     assert app.sql("select status from projects where id=?", pid) == [("in_progress",)]
+
+
+def test_patch_status_echoes_nothing_the_caller_sent(signed_in, make_project):
+    """The answer is read back from the stored row, not assembled from the request, so extra
+    fields go nowhere and the body a client posted is never handed back as a page."""
+    pid = make_project("Echo probe")
+    r = signed_in.patch("/project/update_status.php", data={
+        "id": pid, "status": "todo", "junk": "<script>alert(1)</script>"})
+    assert r.headers["Content-Type"].startswith("application/json")
+    assert r.json() == {"id": str(pid), "status": "todo"}
 
 
 # --- status refresh over htmx (card #42) -----------------------------------------------------

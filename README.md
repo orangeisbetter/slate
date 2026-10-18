@@ -23,9 +23,10 @@ markdown in descriptions and comments).
 
 ## How it is built
 
-Plain PHP, SQLite, and server-rendered HTML. htmx and Bootstrap are loaded from a CDN and used
-as-is. There is no build step, and the only custom JavaScript is error toasts and the board's drag
-highlight.
+Plain PHP, SQLite, and server-rendered HTML. htmx and Bootstrap are served from the app's own
+`public/assets/vendor/` (pinned versions committed to the repository), so no page makes a request
+to a third-party host and no client needs internet access. There is no build step, and the only
+custom JavaScript is error toasts and the board's drag highlight.
 
 URLs map to files on disk: `public/project/index.php` is `/project/`, and its endpoints sit beside
 it. There is no front controller. Shared behavior is centralized — statuses are one table, all
@@ -45,8 +46,8 @@ something is missing and reports the state of `data/board.db`.
 `mbstring` is used when present but is not required; without it, search only folds case for ASCII
 letters.
 
-Bootstrap and htmx come from `cdn.jsdelivr.net` (pinned to exact versions), so a client needs
-internet access to render pages.
+Bootstrap and htmx are vendored under `public/assets/vendor/` at pinned versions and committed
+alongside the code, so rendering pages needs no network at all.
 
 ## Install
 
@@ -70,7 +71,10 @@ server {
 An unknown path never reaches PHP (there is no front controller), so the web server has to be told
 where the 404 page is. Apache: `ErrorDocument 404 /404.php`.
 
-Keep `data/` writable by the user the web server runs as. Then open the site: the first visit to
+Keep `data/` writable by the user the web server runs as. Everything the process creates there —
+`data/` itself, `board.db`, `error.log` — is created `0750`/`0640`, readable only by the web
+server's user and group. An older install keeps whatever mode it already has; bring it in line once
+with `chmod 750 data && chmod 640 data/board.db`. Then open the site: the first visit to
 `/setup/` creates the first account, which becomes an admin. Once any account can sign in, `/setup/`
 closes itself.
 
@@ -148,17 +152,23 @@ migrates a throwaway database there, and drives it over HTTP — never touching 
 
 Notes for deploying this publicly:
 
-- Passwords are hashed with `password_hash()` and verified with `password_verify()`.
+- Passwords are hashed with `password_hash()` and verified with `password_verify()`; a refusal
+  costs one hash verification whether or not the address has an account.
 - Sign-in is throttled: 8 failures per email address within a 15-minute window.
 - Setup is closed once an account exists, and can be keyed with `SLATE_SETUP_KEY`.
 - Invitation links are single-use, expire after two weeks, and use 24 bytes from `random_bytes()`.
 - SQL goes through prepared statements with bound parameters; output through `h()`.
-- Markdown is rendered by Parsedown in safe mode, with link schemes restricted to http, https and
-  root-relative paths.
+- Markdown is rendered by Parsedown in safe mode. Only two anchors can come out of a body — a bare
+  http(s) URL and a `#NN` project reference — and both repeat their target as the visible text.
+  Bracket links are not parsed at all, so a body can never show one label and go to another.
+- Every response carries `X-Frame-Options: DENY` and `X-Content-Type-Options: nosniff`, plus HSTS
+  when the request arrived over TLS.
+- Changing a password stamps every other session for sign-out: they are refused on their next
+  request, not retroactively disconnected.
 - **No CSRF tokens.** Instead one guard checks every state-changing request against request headers
   that another site cannot forge (`Sec-Fetch-Site`, then `Origin`/`Referer`). Requests with none of
   those headers are allowed, so curl and the test suite work; set `SLATE_CSRF_STRICT=1` to refuse
-  them.
+  them. `SameSite=Lax` on the session cookie carries the main weight.
 
 ## Known limitations
 
@@ -166,7 +176,6 @@ Not built yet:
 
 - **No email.** Invitations are a link an admin copies and sends by hand. No password reset, no
   notifications.
-- **Changing a password does not sign other devices out** — sessions have no server-side index.
 - **No pagination.** The list view and boards render every row.
 - **Search is substring only.** `bnch` finds nothing.
 - **Single-node assumptions.** SQLite in WAL mode on a local disk, one app instance. Do not point two

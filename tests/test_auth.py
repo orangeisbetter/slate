@@ -122,6 +122,15 @@ def test_the_redirect_remembers_where_the_visitor_was_going(anon):
     assert query.get("next") == ["/index.php"]
 
 
+def test_a_backslash_in_next_cannot_leave_the_site(anon, user):
+    """safe_next() only sends root-relative paths on, and a path with a backslash in it is not one:
+    browsers read /\\evil.com as //evil.com, which is a redirect to another host."""
+    r = anon.post("/login/login.php", data={
+        "email": user["email"], "password": user["password"], "next": "/\\evil.com"})
+    assert is_redirect(r)
+    assert r.headers["Location"] == "/index.php"
+
+
 def test_an_anonymous_visitor_cannot_open_a_project(app, anon, project_id):
     r = anon.get(f"/project/?id={project_id}")
     assert is_redirect(r)

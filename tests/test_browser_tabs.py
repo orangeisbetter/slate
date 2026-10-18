@@ -7,8 +7,8 @@ the whole feature lives or dies on that. Grepping the stylesheet cannot answer i
 the CSS text would only prove the rules are spelled the way this file spells them.
 
 So this drives headless Chromium against the real rendered page and asks it what is actually
-displayed. It skips, loudly, if there is no Chromium or the Bootstrap stylesheet cannot be fetched,
-so a machine without a browser can still run the rest of the suite.
+displayed. It skips, loudly, if there is no Chromium, so a machine without a browser can still run
+the rest of the suite.
 """
 import re
 import shutil
@@ -19,10 +19,11 @@ import requests
 
 from conftest import SEED_EMAIL, SEED_PASSWORD
 
-BOOTSTRAP_CSS = "https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
-BOOTSTRAP_JS = "https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
 CHROMIUM_NAMES = ("chromium", "chromium-browser", "google-chrome", "google-chrome-stable")
 PROBE_PATH = "/account/probe.html"
+# What the page loads from the app's own vendor directory; see page_start() in src/views.php.
+BOOTSTRAP_CSS = "/assets/vendor/bootstrap.min.css"
+BOOTSTRAP_JS = '<script src="/assets/vendor/bootstrap.bundle.min.js" defer></script>'
 
 # Runs in the page and reports what the browser actually displays. Transitions are off because
 # Bootstrap fades background-color on .nav-link over .15s, and a computed style read while that is
@@ -83,25 +84,23 @@ def chromium():
 
 @pytest.fixture(scope="session")
 def tabs_page(app, chromium):
-    """Build the probe once: the account page as the browser gets it, with both stylesheets local so
-    it loads without the network. Served from /account/ so a bare fragment resolves against that
-    directory, the resolution a reader of /account/ actually gets."""
-    try:
-        css = requests.get(BOOTSTRAP_CSS, timeout=20)
-        css.raise_for_status()
-    except requests.RequestException as exc:
-        pytest.skip(f"could not fetch the Bootstrap stylesheet; the panes would not be hidden ({exc})")
-
+    """Build the probe once: the account page as the browser gets it. Everything it needs is served
+    from the app's own vendor directory now, so no network is involved. Served from /account/ so a
+    bare fragment resolves against that directory, the resolution a reader of /account/ actually
+    gets."""
     c = requests.Session()
     c.post(f"{app.base}/login/login.php",
            data={"email": SEED_EMAIL, "password": SEED_PASSWORD}, allow_redirects=False)
     html = c.get(f"{app.base}/account/").text
     if 'id="tab-profile"' not in html:
         pytest.skip("the account page did not render; is the server up?")
+    if BOOTSTRAP_CSS not in html:
+        pytest.skip(f"the account page no longer links {BOOTSTRAP_CSS}; the probe would be blind")
 
-    (app.dir / "public" / "bootstrap.min.css").write_text(css.text)
-    html = html.replace(f'href="{BOOTSTRAP_CSS}"', 'href="/bootstrap.min.css"')
-    html = html.replace(f'src="{BOOTSTRAP_JS}"', "")
+    # Bootstrap's JS comes out: the panes are the cascade's job, and a script that initialises the
+    # nav would be a second thing deciding what the probe measures. The stylesheet stays where the
+    # page put it: /assets/vendor/… resolves from /account/ too, being root-relative.
+    html = html.replace(BOOTSTRAP_JS, "")
     html = html.replace(
         "</head>",
         "<style>*,*::before,*::after{transition:none !important;animation:none !important}</style>\n</head>",

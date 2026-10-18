@@ -143,6 +143,11 @@ const context = vm.createContext({
   document,
   htmx: { ajax: (method, url, opts) => posted.push({ method, url, opts }) },
   bootstrap: { Toast: function () { this.show = () => {}; } },
+  // app.js also declares a <multi-select> custom element at top level. Evaluating that class needs
+  // the two browser globals it rests on; define() does not construct one, so the drag section this
+  // file actually exercises is untouched by them.
+  HTMLElement: class {},
+  customElements: { define() {} },
   console,
 });
 vm.runInContext(fs.readFileSync(APP, 'utf8'), context, { filename: APP });
@@ -180,8 +185,8 @@ ok(dropEv.defaultPrevented, 'dropping on a panel is accepted');
   // source happens to say would pass that; resolving it against the page is what a browser does.
   const PAGE = 'http://host/board/';
   const postedTo = posted.length === 1 && new URL(posted[0].url, PAGE).pathname;
-  ok(posted.length === 1 && posted[0].method === 'POST' && postedTo === '/board/move.php',
-     '  ...and posts the move to the right script', posted[0] && `${posted[0].url} -> ${postedTo}`);
+  ok(posted.length === 1 && posted[0].method === 'PATCH' && postedTo === '/board/move.php',
+     '  ...and patches the move to the right script', posted[0] && `${posted[0].method} ${posted[0].url} -> ${postedTo}`);
 ok(posted[0] && posted[0].opts.values.id === '10'
    && posted[0].opts.values.status === 'done'
    && posted[0].opts.values.board === '1',

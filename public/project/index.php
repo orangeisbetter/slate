@@ -86,7 +86,7 @@ page_start($p->title);
 						<input type="hidden" name="id" value="<?= $id ?>">
 						<label class="form-label fw-semibold" for="desc">Description</label>
 						<textarea class="form-control mb-2" id="desc" name="description" rows="6"><?= h($p->description) ?></textarea>
-						<div class="form-text mb-2">Markdown: <code>**bold**</code> for <strong>bold</strong>, <code>*italic*</code> for <em>italic</em>, <code>`code`</code> for <code>code</code>, <code>- list</code>, <code>[text](url)</code>, and a bare <code>https://</code> URL links too</div>
+						<div class="form-text mb-2">Markdown: <code>**bold**</code> for <strong>bold</strong>, <code>*italic*</code> for <em>italic</em>, <code>`code`</code> for <code>code</code>, <code>- list</code>, <code>#12</code> for a project, and a bare <code>https://</code> URL links too</div>
 						<button class="btn btn-primary">Save description</button>
 						<label class="btn btn-outline-secondary" for="desc-toggle">Cancel</label>
 					</form>
@@ -167,7 +167,7 @@ page_start($p->title);
 							<form class="mt-3" method="post" action="/project/comment.php" hx-post="/project/comment.php" hx-target="#cms" hx-on::after-request="this.reset()">
 								<input type="hidden" name="id" value="<?= $id ?>">
 								<textarea class="form-control mb-2" name="body" rows="3" required placeholder="Write a comment"></textarea>
-								<div class="form-text mb-2">Markdown: <code>**bold**</code> for <strong>bold</strong>, <code>*italic*</code> for <em>italic</em>, <code>`code`</code> for <code>code</code>, <code>- list</code>, <code>[text](url)</code>, and a bare <code>https://</code> URL links too</div>
+								<div class="form-text mb-2">Markdown: <code>**bold**</code> for <strong>bold</strong>, <code>*italic*</code> for <em>italic</em>, <code>`code`</code> for <code>code</code>, <code>- list</code>, <code>#12</code> for a project, and a bare <code>https://</code> URL links too</div>
 								<button class="btn btn-outline-primary">Add comment</button>
 							</form>
 						<?php else: ?>

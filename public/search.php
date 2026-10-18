@@ -47,7 +47,7 @@ page_start($q === '' ? 'Search' : 'Search: ' . $q);
                         <td><?php ref_badge((int)$p->id) ?></td>
                         <td><a href="/project/?id=<?= (int)$p->id ?>"><?= h($p->title) ?></a></td>
                         <td><?php type_badge($p->type) ?></td>
-                        <td><span class="badge text-bg-<?= status_tone($p->status) ?>"><?= h(status_label($p->status)) ?></span></td>
+                        <td><span class="badge text-bg-<?= status_tone($p->status) ?>"><?= status_label($p->status) ?></span></td>
                     </tr>
                 <?php endforeach ?>
                 </tbody>

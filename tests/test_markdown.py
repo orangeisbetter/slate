@@ -1,7 +1,9 @@
 """Markdown in comments and descriptions: one renderer for both. Card #44.
 
-The subset is bold/italic, inline code and fenced blocks, bracket links with checked
-schemes, and lists. Everything else stays escaped text, and single newlines still break.
+The subset is bold/italic, inline code and fenced blocks, lists, and links whose text repeats the
+target — a bare http(s) URL and a #NN project reference. Labelled links (`[text](url)`) are not
+parsed at all, so a body can never show one name and go somewhere else. Everything else stays
+escaped text, and single newlines still break.
 """
 from helpers import soup
 
@@ -41,10 +43,16 @@ def test_unordered_and_ordered_lists(signed_in, make_project):
     assert [li.get_text(strip=True) for li in frag.select("ol li")] == ["first", "second"]
 
 
-def test_bracket_link_and_scheme_check(signed_in, make_project):
+def test_bracket_links_stay_text(signed_in, make_project):
+    """No label may differ from where it points, so the labelled form of a link is not a link.
+    The source reads back exactly as written — and if an http URL inside still picks up the
+    autolinker, it wears its own address as its text, never the label beside it."""
     frag = frag_of(signed_in, make_project, "[Slate](https://example.com/x)")
-    link = frag.select_one('a[href="https://example.com/x"]')
-    assert link is not None and link.get_text(strip=True) == "Slate"
+    body = frag.select("div[id^=comment-] > div:last-child")[0]
+    for a in body.select("a[href]"):
+        assert a.get_text(strip=True) == a["href"], "an anchor may only say where it goes"
+    assert "[Slate](https://example.com/x)" in body.get_text()
+
     frag = frag_of(signed_in, make_project, "[evil](javascript:alert(1))")
     body = frag.select("div[id^=comment-] > div:last-child")[0]
     assert body.select_one("a[href]") is None
@@ -138,6 +146,7 @@ def test_comments_and_descriptions_agree(signed_in, make_project):
 
 def test_image_syntax_does_not_become_a_remote_fetch(signed_in, make_project):
     """A comment must not make every reader's browser fetch a URL its author chose. The app
-    never turned image syntax into an <img> and still does not; it falls through as a link."""
+    never turned image syntax into an <img> and still does not; the bracket form behind it is
+    refused as well, so the source reads back as itself."""
     frag = frag_of(signed_in, make_project, "![pixel](https://example.com/track.png)")
     assert frag.select_one("img") is None

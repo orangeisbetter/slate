@@ -9,6 +9,12 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 start_session();
 
+// A fixed, valid bcrypt hash. Every refusal verifies against it when there is no usable stored
+// hash, so a miss costs exactly one bcrypt whether or not the address has an account — the reply
+// time stops being a way to enumerate addresses. The value verifies nothing: nothing ever hashes
+// to it, and it is not a hash of any known password.
+const LOGIN_DUMMY_HASH = '$2y$10$1PTVqiFUDjrnfdTMZmLTMOkJtMmqCRF715mSk5x4b0lp0dtt.J9lS';
+
 $email = trim((string)($_POST['email'] ?? ''));
 $password = (string)($_POST['password'] ?? '');
 $next = safe_next((string)($_POST['next'] ?? ''));
@@ -31,7 +37,12 @@ if (login_throttled($email)) {
 // and for the same reason as a wrong password: this form must not be a way of finding out which
 // addresses have accounts, or which of those are switched off.
 $user = user_by_email($email);
-if (!$user || !$user->active || !check_password($password, $user->password_hash)) {
+$live = $user !== null && $user->active && is_string($user->password_hash) && $user->password_hash !== '';
+// The verify itself runs unconditionally — $stored is the dummy when the account is missing,
+// switched off or passwordless — because a branch that skipped it would be quick to notice.
+$stored = $live ? $user->password_hash : LOGIN_DUMMY_HASH;
+$ok = check_password($password, $stored);
+if (!$live || !$ok) {
     record_login_failure($email);
     login_refused($email);
 }

@@ -49,7 +49,7 @@ page_start('Recent activity');
                     <?php elseif ($row['kind'] === 'status'): ?>
                         <?php if ($actor !== null): ?><?php user_link($actor, $USERS[$actor] ?? 'Unknown') ?><?php else: ?>Someone<?php endif ?>
                         moved <a href="/project/?id=<?= $pid ?>"><?php ref_badge($pid) ?><?= h($row['title']) ?></a>
-                        from <?= h(status_label($row['from_status'])) ?> to <?= h(status_label($row['to_status'])) ?>
+                        from <?= status_label($row['from_status']) ?> to <?= status_label($row['to_status']) ?>
                     <?php else: ?>
                         <?php if ($actor !== null): ?><?php user_link($actor, $USERS[$actor] ?? 'Unknown') ?><?php else: ?>Someone<?php endif ?>
                         commented on <a href="/project/?id=<?= $pid ?>#comments"><?php ref_badge($pid) ?><?= h($row['title']) ?></a>:

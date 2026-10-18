@@ -1,0 +1,15 @@
+-- 014: per-session credential stamp, so a password change can sign other sessions out.
+--
+-- users.session_version counts how many times the account's credential has been replaced.
+-- login_user() copies the current value into $_SESSION['sv'], require_login() refuses any
+-- session whose stamp no longer matches the row, and change_password.php increments the column
+-- alongside the new hash. Every session other than the one that changed the password therefore
+-- fails its very next request and is destroyed, without any polling or session table: the check
+-- rides along with the user lookup require_login() already does.
+--
+-- It is not instant revocation -- a session dies on its next request rather than at the moment
+-- of the change -- which is the same latency the existing users.active check already has.
+-- Sessions signed in before this migration carry no stamp and are refused once, which signs
+-- everybody back in the first time they visit after upgrading: a deliberate one-off, the same
+-- credential change the migration is there to police.
+ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0;

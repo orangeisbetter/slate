@@ -31,7 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         <form method="post" action="/project/comment_edit.php">
             <input type="hidden" name="comment_id" value="<?= (int)$c->id ?>">
             <textarea class="form-control mb-2" name="body" rows="4" required><?= h($c->body) ?></textarea>
-            <div class="form-text mb-2">Markdown: <code>**bold**</code> for <strong>bold</strong>, <code>*italic*</code> for <em>italic</em>, <code>`code`</code> for <code>code</code>, <code>- list</code>, <code>[text](url)</code>, and a bare <code>https://</code> URL links too</div>
+            <div class="form-text mb-2">Markdown: <code>**bold**</code> for <strong>bold</strong>, <code>*italic*</code> for <em>italic</em>, <code>`code`</code> for <code>code</code>, <code>- list</code>, <code>#12</code> for a project, and a bare <code>https://</code> URL links too</div>
             <button class="btn btn-primary">Save comment</button>
             <a class="btn btn-outline-secondary" href="/project/?id=<?= $p->id ?>#comment-<?= (int)$c->id ?>">Cancel</a>
         </form>

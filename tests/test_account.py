@@ -9,7 +9,7 @@ import sqlite3
 import subprocess
 from urllib.parse import unquote
 
-from conftest import Client, SEED_PASSWORD
+from conftest import Client, SEED_EMAIL, SEED_PASSWORD
 from helpers import is_redirect, soup, text_of
 
 
@@ -159,6 +159,34 @@ def test_changing_the_password_returns_to_signin(signed_in):
     r = signed_in.put("/account/change_password.php", data={
         "current": "temporarypass1", "password": SEED_PASSWORD, "password2": SEED_PASSWORD})
     assert is_redirect(r) and r.headers["Location"].endswith("#tab-signin")
+
+
+def test_changing_the_password_signs_every_other_session_out(app, signed_in):
+    """The credential behind every other session has changed, so those sessions are refused on
+    their next request — while the one that made the change stays signed in throughout. Same
+    put-it-back discipline as the test above: the seeded password outlives this test."""
+    other = Client(app.base)
+    r = other.post("/login/login.php", data={"email": SEED_EMAIL, "password": SEED_PASSWORD})
+    assert r.status_code in (302, 303), "a second session on the same account"
+    assert other.get("/account/").status_code == 200
+    assert signed_in.get("/account/").status_code == 200
+
+    r = signed_in.put("/account/change_password.php", data={
+        "current": SEED_PASSWORD, "password": "temporarypass1", "password2": "temporarypass1"})
+    assert is_redirect(r)
+
+    # The other session is thrown away outright — logged out, cookie cleared — rather than merely
+    # refused a page, so re-activating the account cannot hand it back its access.
+    r = other.get("/index.php")
+    assert is_redirect(r)
+    assert "/login/" in r.headers["Location"]
+    assert other.cookies.get_dict() == {}, "the dead session kept no cookie"
+    # The session that changed the password kept its own.
+    assert signed_in.get("/account/").status_code == 200
+
+    r = signed_in.put("/account/change_password.php", data={
+        "current": "temporarypass1", "password": SEED_PASSWORD, "password2": SEED_PASSWORD})
+    assert is_redirect(r)
 
 
 def test_a_wrong_current_password_is_refused_on_signin(signed_in):

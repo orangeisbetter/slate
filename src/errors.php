@@ -20,10 +20,42 @@
 // few KB and a silently truncated 200 for the same failure further down. Buffering costs one page of
 // memory per request, which at these page sizes is not a trade worth making.
 
+// Anything this process creates then belongs to it and nobody else: data/ is written by SQLite
+// and slate_log_file(), and neither can be given a mode of its own (SQLite creates board.db with
+// no arguments), so the mask is the one lever. 0027 yields 0750 on directories and 0640 on files
+// instead of the 0775/0644 the process default would leave. Loaded first, before the database is
+// opened or the first log line can be written. Existing files keep whatever mode they already
+// have: an upgrade needs a one-off chmod(640) on data/board.db, which the README records.
+umask(0027);
+
 error_reporting(E_ALL);
 ini_set('display_errors', '0');        // rendered below instead, and never with paths in it
 ini_set('log_errors', '1');
 ob_start();
+
+/**
+ * The headers every response carries, set here because this file is loaded first by every entry
+ * point — including the ones that die during bootstrap — and headers must precede any body.
+ *
+ * X-Frame-Options stops another site framing Slate in an invisible iframe and clicking it on the
+ * victim's behalf (the board drag has no confirmation to get in the way); nosniff stops the
+ * browser guessing a response's type; HSTS is only sent when the request arrived over TLS, since
+ * a browser ignores it on a plaintext response and a local http:// run should not earn one.
+ */
+function slate_security_headers(): void {
+    if (headers_sent()) {
+        return;
+    }
+    header('X-Frame-Options: DENY');
+    header('X-Content-Type-Options: nosniff');
+    $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || (($_SERVER['REQUEST_SCHEME'] ?? '') === 'https')
+        || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+    if ($https) {
+        header('Strict-Transport-Security: max-age=31536000');
+    }
+}
+slate_security_headers();
 
 /** True when SLATE_DEBUG asks for the unfiltered detail on the page. */
 function slate_debug(): bool {

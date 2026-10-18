@@ -47,8 +47,10 @@ page_start('Dashboard');
               // there is a review status to count. Built from the table so an admin adding a finished
               // status gets a tile without this page being edited. ?>
         <?php $tiles = [['All projects', $total, 'secondary'], ['Open', $open, 'primary']];
-              if (status_exists('review')) {
-                  $tiles[] = [status_label('review'), $counts['review'] ?? 0, status_tone('review')];
+              // Raw label, because the tile below wraps every label in h(); status_label() escapes
+              // itself for the call sites that print one on its own.
+              if (($review = status_row('review')) !== null) {
+                  $tiles[] = [$review['label'], $counts['review'] ?? 0, $review['tone']];
               }
               foreach (statuses() as $row) {
                   if ($row['is_finished']) {

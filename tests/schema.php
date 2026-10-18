@@ -35,8 +35,9 @@ if (!in_array('roles', $tables, true) || !in_array('email', $columns('users'), t
 }
 
 echo "users columns\n";
-// theme is the account's own choice of site theme, added by migration 013.
-foreach (['id', 'name', 'email', 'password_hash', 'active', 'theme'] as $column) {
+// theme is the account's own choice of site theme, added by migration 013. session_version counts
+// password changes, and is what signs every other session out on its next request (migration 014).
+foreach (['id', 'name', 'email', 'password_hash', 'active', 'theme', 'session_version'] as $column) {
     ok(in_array($column, $columns('users'), true), "users.$column");
 }
 

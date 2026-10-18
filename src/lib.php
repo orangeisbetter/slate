@@ -144,9 +144,14 @@ function status_exists(string $slug): bool {
 function panel_order(): array {
     return array_column(statuses(), 'slug');
 }
-/** What a status is called. Falls back to the slug, which only a status_log entry can outlive. */
+/**
+ * What a status is called, escaped for HTML. Falls back to the slug, which only a status_log
+ * entry can outlive. Escaped here rather than at each call site because a label is admin-written
+ * text and this is the one accessor everything renders it through — a call site that forgets
+ * h() is then still safe.
+ */
 function status_label(string $slug): string {
-    return status_row($slug)['label'] ?? $slug;
+    return h((string)(status_row($slug)['label'] ?? $slug));
 }
 /** The tone its badge wears, falling back to the plain one for the same reason. */
 function status_tone(string $slug): string {
@@ -413,9 +418,16 @@ function update_project_from_post(): never {
     go("/project/?id=$id");
 }
 
-/** Keeps redirects on this site: only root-relative paths, never protocol-relative ones. */
+/**
+ * Keeps redirects on this site: only root-relative paths, never protocol-relative ones.
+ *
+ * Backslashes are refused alongside a leading double slash because browsers treat `\` as `/` in
+ * URLs: `/\evil.com` resolves as `//evil.com`, which is a redirect to another site. The check is
+ * separate from the regex because a pattern that matches a prefix would wave the backslash
+ * through wherever it sits in the rest of the path.
+ */
 function safe_next(string $next): string {
-    return preg_match('#^/(?!/)#', $next) ? $next : '/index.php';
+    return preg_match('#^/(?!/)#', $next) && !str_contains($next, '\\') ? $next : '/index.php';
 }
 
 // ---- users, roles, sessions ----
@@ -949,10 +961,15 @@ function start_session(): void {
     session_start();
 }
 
+/**
+ * Starts a signed-in session for $user_id, stamped with the account's current session_version so
+ * require_login() can tell this session apart from one a password change has since invalidated.
+ */
 function login_user(int $user_id): void {
     start_session();
     session_regenerate_id(true);      // new session id on privilege change
     $_SESSION['uid'] = $user_id;
+    $_SESSION['sv'] = (int)q('SELECT session_version FROM users WHERE id=?', [$user_id])->fetchColumn();
 }
 
 function logout_user(): void {
