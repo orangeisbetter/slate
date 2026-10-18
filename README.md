@@ -72,11 +72,12 @@ An unknown path never reaches PHP (there is no front controller), so the web ser
 where the 404 page is. Apache: `ErrorDocument 404 /404.php`.
 
 Keep `data/` writable by the user the web server runs as. Everything the process creates there —
-`data/` itself, `board.db`, `error.log` — is created `0750`/`0640`, readable only by the web
-server's user and group. An older install keeps whatever mode it already has; bring it in line once
-with `chmod 750 data && chmod 640 data/board.db`. Then open the site: the first visit to
-`/setup/` creates the first account, which becomes an admin. Once any account can sign in, `/setup/`
-closes itself.
+`data/` itself, `board.db`, `error.log` — is created `0770`/`0660`, readable and writable by the
+web server's user and group and by nobody else. If the web server runs as a different user than
+the one that created the files, that shared group needs the write bit; an older install (or one
+where `data/` was locked down to `0750`) needs `chmod 770 data && chmod 660 data/board.db` once.
+Then open the site: the first visit to `/setup/` creates the first account, which becomes an
+admin. Once any account can sign in, `/setup/` closes itself.
 
 ### Trying it out without a web server
 

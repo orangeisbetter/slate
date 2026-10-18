@@ -20,13 +20,16 @@
 // few KB and a silently truncated 200 for the same failure further down. Buffering costs one page of
 // memory per request, which at these page sizes is not a trade worth making.
 
-// Anything this process creates then belongs to it and nobody else: data/ is written by SQLite
-// and slate_log_file(), and neither can be given a mode of its own (SQLite creates board.db with
-// no arguments), so the mask is the one lever. 0027 yields 0750 on directories and 0640 on files
-// instead of the 0775/0644 the process default would leave. Loaded first, before the database is
-// opened or the first log line can be written. Existing files keep whatever mode they already
-// have: an upgrade needs a one-off chmod(640) on data/board.db, which the README records.
-umask(0027);
+// Anything this process creates then belongs to it and its group, and to nobody else: data/ is
+// written by SQLite and slate_log_file(), and neither can be given a mode of its own (SQLite
+// creates board.db with no arguments), so the mask is the one lever. 0007 yields 0770 on
+// directories and 0660 on files instead of the 0775/0664 the usual process default leaves, which
+// keeps the world out without locking out the web server: it commonly runs as a different user
+// (www-data) sharing this directory's group, and needs the group's write bit to create the
+// board.db-wal and -shm SQLite works through. Loaded first, before the database is opened or the
+// first log line can be written. Existing files keep whatever mode they already have: an upgrade
+// needs a one-off `chmod 770 data && chmod 660 data/board.db`, which the README records.
+umask(0007);
 
 error_reporting(E_ALL);
 ini_set('display_errors', '0');        // rendered below instead, and never with paths in it
