@@ -63,12 +63,14 @@ function db_is_current(): bool {
         && count(array_intersect(['email', 'password_hash', 'active', 'theme'], $columns)) === 4;
 }
 
+/** Prepare and execute a SQL statement with bound parameters. */
 function q(string $sql, array $args = []): PDOStatement {
     global $db;
     $statement = $db->prepare($sql);
     $statement->execute($args);
     return $statement;
 }
+/** Escape HTML for safe output (except where already escaped). */
 function h(string $s): string {
     return htmlspecialchars((string)$s, ENT_QUOTES);
 }
@@ -261,6 +263,10 @@ function page_offset(int $page, int $per_page = PAGE_SIZE): int {
 // text, which is what the toast path has always read; anything else gets the shared error page. The
 // branch is the HX-Request header rather than anything the browser sends, so the two are told apart
 // by the same signal htmx itself uses (see the 401 in app.php).
+/**
+ * Return an error response: htmx fragment (plain text) for htmx requests,
+ * otherwise a full error page rendered by slate_error_page().
+ */
 function bad(string $msg, int $code = 400): never {
     if (isset($_SERVER['HTTP_HX_REQUEST'])) {
         http_response_code($code);
@@ -277,6 +283,7 @@ function validDate(mixed $d): ?string {
     }
     return $d ?: null;
 }
+/** Fetch a project as a Project model; returns null if not found. */
 function project(int $id): ?Project {
     $stmt = q('SELECT * FROM projects WHERE id=?', [$id]);
     $stmt->setFetchMode(PDO::FETCH_CLASS | PDO::FETCH_PROPS_LATE, Project::class);

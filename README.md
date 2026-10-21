@@ -183,6 +183,10 @@ Not built yet:
   servers at one database file, and do not put it on NFS.
 - No licence and no privacy policy page.
 
+## Documentation
+
+See [docs/](docs/) for architecture, database (including the two-faced board DB), endpoints, security, and development guides.
+
 ## Layout
 
 ```
