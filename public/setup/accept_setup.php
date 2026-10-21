@@ -9,7 +9,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 start_session();
 
-if ((int)($_SESSION['uid'] ?? 0)) {
+if (session_user_id()) {
     go('/index.php');
 }
 

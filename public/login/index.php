@@ -5,8 +5,8 @@ require __DIR__ . '/../../src/bootstrap.php';
 
 start_session();
 
-$uid = (int)($_SESSION['uid'] ?? 0);
-if ($uid && user_exists($uid)) {
+$uid = session_user_id();
+if ($uid) {
     go('/index.php');
 }
 if (!credentials_count()) {

@@ -22,7 +22,8 @@ Slate's security posture is documented as binding in the codebase.
 
 ## Auth & Sessions
 
-- Sessions are managed by `slate_start_session()` in `src/lib.php`. Password changes stamp other sessions (they are refused on their next request, not disconnected retroactively).
+- PHP stores the session files and issues the cookie (`start_session()` in `src/lib.php`); the `sessions` table is the index over them, keyed by `sha256(session_id())` so the raw id never sits in the database. `require_login()` refuses any session with no live row — revocation, password change and account deletion are all the same DELETE.
+- `/account/` lists the sessions holding the account (device label from the User-Agent, signed in, last active) and can revoke one or sign out everywhere else. A password change deletes the other rows. All of it takes effect on the browser's next request, not retroactively.
 - Sign-in is throttled: 8 failures per email per 15 minutes. Avoid hammering one address with bad passwords in tests.
 - Setup: `/setup/` creates the first account (becomes admin). Once any account can sign in, `/setup/` closes itself. Can be keyed with `SLATE_SETUP_KEY`.
 - Invitations: single-use, expire after two weeks, use 24 bytes from `random_bytes()`. No email delivery — links are copied by hand.

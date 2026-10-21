@@ -36,7 +36,7 @@ A crash returns an HTTP 500 with a complete page and a reference code, logged to
 
 ## Requirements
 
-- PHP 8.1 or newer, with `pdo_sqlite` enabled
+- PHP 8.1 or newer, with `pdo_sqlite` enabled, talking to SQLite 3.35 or newer
 - [Composer](https://getcomposer.org/), for the one library the app installs
 - A web server that can run PHP (nginx, Apache, Caddy, or PHP's own built-in server for local use)
 
@@ -119,6 +119,10 @@ INI
 sudo systemctl reload php8.2-fpm
 ```
 
+PHP stores the session data and the cookie; the database keeps an index over them, which is what
+lets `/account/` list the browsers signed in as you and sign one out, or all of them except the
+one you are using. A password change does the same to every browser but the one that changed it.
+
 Terminate TLS in the web server so PHP sees `HTTPS=on` and marks the cookie `Secure`. The app does
 not trust `X-Forwarded-Proto` itself; if you terminate TLS at a proxy, set `HTTPS=on` for PHP or
 enable `session.cookie_secure`.
@@ -164,8 +168,9 @@ Notes for deploying this publicly:
   Bracket links are not parsed at all, so a body can never show one label and go to another.
 - Every response carries `X-Frame-Options: DENY` and `X-Content-Type-Options: nosniff`, plus HSTS
   when the request arrived over TLS.
-- Changing a password stamps every other session for sign-out: they are refused on their next
-  request, not retroactively disconnected.
+- Changing a password signs every other browser out: their sessions are deleted and refused on
+  their next request, not retroactively disconnected. `/account/` can do the same to one browser
+  or all but the current one without changing the password.
 - **No CSRF tokens.** Instead one guard checks every state-changing request against request headers
   that another site cannot forge (`Sec-Fetch-Site`, then `Origin`/`Referer`). Requests with none of
   those headers are allowed, so curl and the test suite work; set `SLATE_CSRF_STRICT=1` to refuse

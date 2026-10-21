@@ -13,7 +13,7 @@ $next = safe_next((string)($_GET['next'] ?? ''));
 $_SESSION['slack_next'] = $next;
 $_SESSION['slack_state'] = bin2hex(random_bytes(16));
 $_SESSION['slack_nonce'] = bin2hex(random_bytes(16));
-$me = (int)($_SESSION['uid'] ?? 0);
+$me = session_user_id();
 if ($me) {
     $_SESSION['slack_linking'] = $me;
 } else {

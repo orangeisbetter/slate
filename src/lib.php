@@ -31,6 +31,7 @@ const THEMES = [
 
 const MIN_PASSWORD = 10;              // characters
 const SESSION_LIFETIME = 14 * 86400;  // two weeks
+const SESSION_TOUCH_EVERY = 60;       // seconds before a live session writes last_seen_at again
 // Rows per page on the lists that would otherwise render everything. One number rather than a
 // per-page choice: every caller but the list view is a table nobody pages through deliberately, and
 // a page-size control is a second interface for the same question.
@@ -512,12 +513,6 @@ function unlink_slack(int $user_id): void {
 }
 
 
-/** False for an account that has been deactivated. Such an account keeps its name on old records. */
-function user_is_active(int $id): bool {
-    global $db;
-    return (bool)$db->query('SELECT active FROM users WHERE id=' . (int)$id)->fetchColumn();
-}
-
 /**
  * Turns sign-in on or off for an account. Callers are responsible for the guards: deactivating
  * yourself or the last admin is refused by the endpoint, not here, because only the caller knows
@@ -946,6 +941,12 @@ function clear_login_failures(string $email): void {
 }
 
 // ---- sessions ----
+//
+// PHP stores the session files and issues the cookie; the sessions table (migration 015) is the
+// index over them and the one place that says who a session belongs to. The row's id is
+// sha256(session_id()): the raw id never leaves the cookie, so a leaked database row is not a
+// signed-in session. A session with no row is refused -- revocation, password change and
+// account deletion are all the same DELETE.
 
 function start_session(): void {
     if (session_status() === PHP_SESSION_ACTIVE) {
@@ -968,23 +969,124 @@ function start_session(): void {
     session_start();
 }
 
+/** This request's session id as the sessions table keys it. The raw id stays in the cookie. */
+function session_id_hash(): string {
+    return hash('sha256', session_id());
+}
+
 /**
- * Starts a signed-in session for $user_id, stamped with the account's current session_version so
- * require_login() can tell this session apart from one a password change has since invalidated.
+ * The row behind this request's session, joined to what the account needs refusing for, or null
+ * when the session holds no signed-in account: never signed in, signed out, revoked, or older
+ * than the sessions table. One indexed read, replacing the three require_login() used to make.
+ */
+function session_row(): ?array {
+    $row = q('SELECT s.id, s.user_id, s.last_seen_at, u.active
+              FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.id=?',
+             [session_id_hash()])->fetch();
+    return $row ?: null;
+}
+
+/**
+ * The signed-in account behind this session, or 0. Says nothing about whether the account is
+ * still active -- callers that only mean "is somebody signed in here" (the login and setup
+ * pages) want exactly that; require_login() is the one that checks the account as well.
+ */
+function session_user_id(): int {
+    if (session_status() !== PHP_SESSION_ACTIVE) {
+        return 0;
+    }
+    $row = q('SELECT user_id FROM sessions WHERE id=?', [session_id_hash()])->fetch();
+    return $row ? (int)$row['user_id'] : 0;
+}
+
+/**
+ * Records that this session is still in use, for the list on /account/. $last_seen is the value
+ * session_row() just read: the common path is then a comparison and no write, so a page read
+ * does not cost a page write.
+ */
+function session_touch(string $last_seen): void {
+    if (strtotime($last_seen) > time() - SESSION_TOUCH_EVERY) {
+        return;
+    }
+    q('UPDATE sessions SET last_seen_at=? WHERE id=?', [gmdate('c'), session_id_hash()]);
+}
+
+/**
+ * Starts a signed-in session for $user_id: a new id (privilege change, and no pre-login session
+ * can ride along), and a row so the account can see and revoke this browser. The row under the
+ * old id goes with it -- regenerate_id() has already dropped the old session file, so anything
+ * left pointing at that id would be a ghost the account page offers to sign out. Rows nobody has
+ * touched in two weeks go with the session files they describe.
  */
 function login_user(int $user_id): void {
     start_session();
+    $superseded = session_id_hash();
     session_regenerate_id(true);      // new session id on privilege change
-    $_SESSION['uid'] = $user_id;
-    $_SESSION['sv'] = (int)q('SELECT session_version FROM users WHERE id=?', [$user_id])->fetchColumn();
+    $now = gmdate('c');
+    q('INSERT INTO sessions(id,user_id,user_agent,created_at,last_seen_at) VALUES(?,?,?,?,?)',
+      [session_id_hash(), $user_id, (string)($_SERVER['HTTP_USER_AGENT'] ?? ''), $now, $now]);
+    q('DELETE FROM sessions WHERE id=?', [$superseded]);
+    q('DELETE FROM sessions WHERE last_seen_at < ?', [gmdate('c', time() - SESSION_LIFETIME)]);
 }
 
+/** Ends this session and takes its row with it, so the browser cannot come back with the cookie. */
 function logout_user(): void {
     start_session();
+    q('DELETE FROM sessions WHERE id=?', [session_id_hash()]);
     $_SESSION = [];
     $p = session_get_cookie_params();
     setcookie(session_name(), '', time() - 42000, $p['path'], $p['domain'], $p['secure'], $p['httponly']);
     session_destroy();
+}
+
+/**
+ * The sessions holding an account, this request's own first and the rest by how recently they
+ * were seen. Stale rows are pruned here as well as at sign-in: a list that offers to sign out a
+ * browser nobody has heard from in two weeks is offering to sign out a browser that is gone.
+ */
+function user_sessions(int $user_id): array {
+    q('DELETE FROM sessions WHERE last_seen_at < ?', [gmdate('c', time() - SESSION_LIFETIME)]);
+    return q('SELECT * FROM sessions WHERE user_id=? ORDER BY (id=?) DESC, last_seen_at DESC',
+             [$user_id, session_id_hash()])->fetchAll();
+}
+
+/**
+ * A short name for a browser from its User-Agent: "Chrome on macOS", or the raw string when
+ * nothing here matches. Best effort on purpose -- a real parser is a library, and this only has
+ * to answer "which of these is me?" on the account page.
+ */
+function ua_label(string $ua): string {
+    $ua = trim($ua);
+    if ($ua === '') {
+        return 'Unknown device';
+    }
+    // Newest spoofing first: every engine claims to be Safari, and most claim Chrome too.
+    $browsers = ['Firefox/' => 'Firefox', 'Edg/' => 'Edge', 'OPR/' => 'Opera',
+                 'Chrome/' => 'Chrome', 'Safari/' => 'Safari'];
+    $browser = null;
+    foreach ($browsers as $needle => $name) {
+        if (str_contains($ua, $needle)) {
+            $browser = $name;
+            break;
+        }
+    }
+    // iOS calls itself Mac OS X, so the phones are asked about first.
+    $oses = ['iPhone' => 'iPhone', 'iPad' => 'iPad', 'Android' => 'Android',
+             'Windows NT' => 'Windows', 'Mac OS X' => 'macOS', 'Linux' => 'Linux'];
+    $os = null;
+    foreach ($oses as $needle => $name) {
+        if (str_contains($ua, $needle)) {
+            $os = $name;
+            break;
+        }
+    }
+    if ($browser === null && $os === null) {
+        if (chars($ua) <= 60) {
+            return $ua;
+        }
+        return (function_exists('mb_substr') ? mb_substr($ua, 0, 60) : substr($ua, 0, 60)) . '…';
+    }
+    return ($browser ?? 'Browser') . ($os !== null ? " on $os" : '');
 }
 
 // Checked before any query below: on an unmigrated database those would fail with a

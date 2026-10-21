@@ -14,6 +14,8 @@ $error = $_GET['error'] ?? null;
 $saved = $_GET['saved'] ?? null;
 $slugs = roles($me);
 $theme_slug = user_theme($me);
+$sessions = user_sessions($me);
+$here = session_id_hash();
 
 // The panes are switched with :target and :has() in public/assets/style.css. Every pane is in the
 // document and CSS shows one of them, so a tab is an ordinary fragment link and switching costs no
@@ -198,6 +200,64 @@ page_start('Your account');
                                 <?php else: ?>
                                     <p class="text-body-secondary mb-1">Not linked</p>
                                     <a class="small" href="/login/slack.php?next=/account/#tab-signin">Link Slack account</a>
+                                <?php endif ?>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-12">
+                        <div class="card">
+                            <div class="card-body">
+                                <h2 class="h5">Signed-in devices</h2>
+                                <?php // Every row is a session this account holds, most recently
+                                      // used first with this request's own pinned to the top. What
+                                      // the form carries is a hash of the session id, so nothing on
+                                      // the page would sign a session back in if it were copied. ?>
+                                <p class="text-body-secondary small">
+                                    Every browser signed in as you. Signing one out does not reach
+                                    into it — the browser is refused its next request instead.
+                                </p>
+                                <table class="table align-middle mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>Device</th>
+                                            <th>Signed in</th>
+                                            <th>Last active</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($sessions as $s): $is_here = $s['id'] === $here; ?>
+                                            <tr>
+                                                <td>
+                                                    <?= h(ua_label($s['user_agent'])) ?>
+                                                    <?php if ($is_here): ?>
+                                                        <span class="badge text-bg-secondary ms-1">This device</span>
+                                                    <?php endif ?>
+                                                </td>
+                                                <td class="text-body-secondary small"><?= dt($s['created_at']) ?></td>
+                                                <td class="text-body-secondary small"><?= dt($s['last_seen_at']) ?></td>
+                                                <td class="text-end">
+                                                    <?php // The current device has no button: signing
+                                                          // out of where you already are is the
+                                                          // navbar's Sign out, and it works. ?>
+                                                    <?php if (!$is_here): ?>
+                                                        <form method="post" action="/account/revoke_session.php"
+                                                              onsubmit="return confirm('Sign this browser out?')">
+                                                            <input type="hidden" name="id" value="<?= h($s['id']) ?>">
+                                                            <button class="btn btn-outline-danger btn-sm">Sign out</button>
+                                                        </form>
+                                                    <?php endif ?>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach ?>
+                                    </tbody>
+                                </table>
+                                <?php if (count($sessions) > 1): ?>
+                                    <form method="post" action="/account/revoke_other_sessions.php" class="mt-3 mb-0"
+                                          onsubmit="return confirm('Sign every other browser out?')">
+                                        <button class="btn btn-outline-danger">Sign out everywhere else</button>
+                                    </form>
                                 <?php endif ?>
                             </div>
                         </div>

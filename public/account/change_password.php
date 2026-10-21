@@ -29,11 +29,12 @@ if ($password !== (string)($in['password2'] ?? '')) {
     $refuse('The two new passwords do not match');
 }
 
-// The counter moves with the hash: every other session was stamped with the old
-// users.session_version and is refused by require_login() on its next request, so changing the
-// password signs everyone else out of the account rather than only rotating this one id.
-q('UPDATE users SET password_hash=?, session_version=session_version+1 WHERE id=?',
-  [hash_password($password), $me]);
+// The rows go with the hash: every other session had one of its own, and they are deleted
+// alongside the old hash, so those browsers are refused by require_login() on their next
+// request -- changing the password signs everyone else out of the account rather than only
+// rotating this one id. This session keeps its row, refreshed below by login_user().
+q('UPDATE users SET password_hash=? WHERE id=?', [hash_password($password), $me]);
+q('DELETE FROM sessions WHERE user_id=? AND id<>?', [$me, session_id_hash()]);
 
 // A new session id, as at sign-in: the credential behind this session has just changed, so it is a
 // privilege change like any other and the old id should not still be good.

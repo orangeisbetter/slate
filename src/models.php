@@ -56,8 +56,6 @@ final class User {
     public ?int $active = null;
     public ?string $slack_id = null;
     public string $theme = 'default';
-    /** Bumped whenever the password changes; see db/014 and require_login(). */
-    public int $session_version = 0;
     public bool $can_login = false;
     /** GROUP_CONCAT(r.slug) on the users list, null elsewhere. Use roleSlugs(). */
     public ?string $roles = null;

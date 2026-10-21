@@ -76,6 +76,13 @@ if (function_exists('mb_strtolower') && function_exists('mb_strlen')) {
 }
 
 echo "\nDatabase\n";
+// Migration 015 drops a column, which SQLite could not do before 3.35 (2021-03). On an older
+// build migrate.php fails loudly and applies nothing, so the version is reported here first,
+// from the same pdo_sqlite the app itself talks through.
+$sqlite = (string)(new PDO('sqlite::memory:'))->query('SELECT sqlite_version()')->fetchColumn();
+report('required', version_compare($sqlite, '3.35.0', '>=') ? 'ok' : 'too old', 'sqlite version',
+       $sqlite . (version_compare($sqlite, '3.35.0', '>=') ? '' : '  — needs 3.35 or newer'),
+       version_compare($sqlite, '3.35.0', '<'));
 $db_file = $root . '/data/board.db';
 if (!file_exists($db_file)) {
     printf("  %-9s %-8s %-24s %s\n", 'absent', '-', 'data/board.db', 'not created yet — run php bin/migrate.php');

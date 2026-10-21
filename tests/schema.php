@@ -21,7 +21,7 @@ $tables = array_column($db->query("SELECT name FROM sqlite_master WHERE type='ta
 echo "tables\n";
 foreach (['users', 'projects', 'comments', 'status_log', 'project_assignees', 'roles', 'user_roles',
           'invites', 'login_attempts', 'schema_migrations', 'boards', 'project_boards',
-          'board_panels', 'project_statuses'] as $table) {
+          'board_panels', 'project_statuses', 'sessions'] as $table) {
     ok(in_array($table, $tables, true), $table);
 }
 
@@ -35,10 +35,18 @@ if (!in_array('roles', $tables, true) || !in_array('email', $columns('users'), t
 }
 
 echo "users columns\n";
-// theme is the account's own choice of site theme, added by migration 013. session_version counts
-// password changes, and is what signs every other session out on its next request (migration 014).
-foreach (['id', 'name', 'email', 'password_hash', 'active', 'theme', 'session_version'] as $column) {
+// theme is the account's own choice of site theme, added by migration 013. session_version
+// (014) is gone: the sessions table (015) is what says which sessions are welcome now.
+foreach (['id', 'name', 'email', 'password_hash', 'active', 'theme'] as $column) {
     ok(in_array($column, $columns('users'), true), "users.$column");
+}
+ok(!in_array('session_version', $columns('users'), true), 'users.session_version is gone (015)');
+
+echo "sessions columns\n";
+// The index over PHP's own session files: id is sha256(session_id()), so the raw id never
+// sits in the database, and a session with no row is refused by require_login().
+foreach (['id', 'user_id', 'user_agent', 'created_at', 'last_seen_at'] as $column) {
+    ok(in_array($column, $columns('sessions'), true), "sessions.$column");
 }
 
 echo "projects columns\n";

@@ -3,14 +3,20 @@
 The page used to be three — Profile, Password, Access. Project #30 re-cut them: the name form and
 the role badges on Profile, and email, password and the Slack connection on Sign-in. The panes are
 switched by CSS (:target/:has()), so what is in the *document* is pinned here; which one is shown is
-test_browser_tabs.py's job, since that is decided by the cascade and not by the HTML.
+test_browser_tabs.py's job, since that is decided by the cascade and not by the HTML. Project #34
+added the signed-in devices list to the Sign-in pane, and the revoke endpoints behind it.
 """
+import hashlib
 import sqlite3
 import subprocess
 from urllib.parse import unquote
 
 from conftest import Client, SEED_EMAIL, SEED_PASSWORD
 from helpers import is_redirect, soup, text_of
+
+# A browser the app can name, unlike the python-requests default the other clients carry.
+CHROME_MAC = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+              "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
 
 # --- helpers ------------------------------------------------------------------------------------
@@ -44,6 +50,27 @@ def set_column(app, table, column, value, where, arg):
         con.commit()
     finally:
         con.close()
+
+
+def session_rows(client):
+    """The Sign-in pane's device rows, from the browser asking.
+
+    Each row is the label text, the hashed session id its revoke form carries (None on the row
+    for this device, which has no form), and whether it is this device. The suite shares one
+    database, so earlier tests leave their own signed-in browsers behind: assertions about "a
+    second session" are relative to a snapshot taken before it appears, never a total count.
+    """
+    table = soup(client.get("/account/")).select_one("#tab-signin table")
+    rows = []
+    for tr in table.select("tbody tr"):
+        tds = tr.select("td")
+        form = tr.select_one('form[action="/account/revoke_session.php"]')
+        rows.append({
+            "device": text_of(tds[0]),
+            "id": form.select_one("input[name=id]")["value"] if form else None,
+            "here": "This device" in text_of(tds[0]),
+        })
+    return rows
 
 
 # --- the two panes ------------------------------------------------------------------------------
@@ -181,6 +208,9 @@ def test_changing_the_password_signs_every_other_session_out(app, signed_in):
     assert is_redirect(r)
     assert "/login/" in r.headers["Location"]
     assert other.cookies.get_dict() == {}, "the dead session kept no cookie"
+    # Its row went with the hash change too: the table the account page lists is not left holding
+    # a browser that is already refused. One row remains, and it is this device's.
+    assert app.sql("select count(*) from sessions where user_id=1") == [(1,)]
     # The session that changed the password kept its own.
     assert signed_in.get("/account/").status_code == 200
 
@@ -198,7 +228,8 @@ def test_a_wrong_current_password_is_refused_on_signin(signed_in):
 
 def test_the_account_endpoints_refuse_get(signed_in):
     for path in ("/account/update_name.php", "/account/change_password.php",
-                 "/account/unlink_slack.php", "/account/update_theme.php"):
+                 "/account/unlink_slack.php", "/account/update_theme.php",
+                 "/account/revoke_session.php", "/account/revoke_other_sessions.php"):
         assert signed_in.get(path).status_code == 405, f"{path} should not answer GET"
 
 
@@ -247,3 +278,98 @@ def test_unlink_is_refused_when_it_would_leave_no_way_in(app, signed_in):
     r = c.delete("/account/unlink_slack.php")
     assert "Slack account unlinked" in unquote(r.headers["Location"])
     assert app.sql("select slack_id from users where id=?", uid) == [(None,)]
+
+
+# --- signed-in devices -------------------------------------------------------------------------
+
+def test_this_device_is_listed_and_offers_no_revoke_for_itself(signed_in):
+    """The card is on the Sign-in pane, and the browser asking is named rather than offered a
+    button: signing out of where you already are is the navbar's Sign out, and it works."""
+    page = soup(signed_in.get("/account/"))
+    assert "Signed-in devices" in text_of(page.select_one("#tab-signin"))
+
+    here = [r for r in session_rows(signed_in) if r["here"]]
+    assert len(here) == 1, "exactly one row is the browser asking"
+    assert here[0]["id"] is None, "this device carries no revoke form"
+
+
+def test_a_second_browser_appears_and_can_be_signed_out(app, signed_in):
+    before = {r["id"] for r in session_rows(signed_in)}
+
+    other = Client(app.base)
+    other.headers["User-Agent"] = CHROME_MAC
+    assert other.post("/login/login.php",
+                      data={"email": SEED_EMAIL, "password": SEED_PASSWORD}).status_code in (302, 303)
+
+    new = {r["id"] for r in session_rows(signed_in)} - before
+    assert len(new) == 1, "the second browser is listed"
+    new_id = new.pop()
+    row = [r for r in session_rows(signed_in) if r["id"] == new_id][0]
+    assert row["device"] == "Chrome on macOS", "the label is read from the User-Agent"
+    assert not row["here"]
+
+    r = signed_in.delete("/account/revoke_session.php", data={"id": new_id})
+    assert is_redirect(r) and r.headers["Location"].endswith("#tab-signin")
+    assert "signed out" in unquote(r.headers["Location"])
+
+    # The revoked browser is thrown away on its next request, cookie and all -- the same way a
+    # password change treats it, but for one session rather than every other one.
+    r = other.get("/index.php")
+    assert is_redirect(r)
+    assert "/login/" in r.headers["Location"]
+    assert other.cookies.get_dict() == {}
+    assert signed_in.get("/account/").status_code == 200, "the device that asked is unaffected"
+    assert new_id not in {r["id"] for r in session_rows(signed_in)}, "the row is gone"
+
+
+def test_sign_out_everywhere_else_keeps_this_device(app, signed_in):
+    others = []
+    for _ in range(2):
+        c = Client(app.base)
+        assert c.post("/login/login.php",
+                      data={"email": SEED_EMAIL, "password": SEED_PASSWORD}).status_code in (302, 303)
+        others.append(c)
+    assert len([r for r in session_rows(signed_in) if not r["here"]]) >= 2
+
+    r = signed_in.post("/account/revoke_other_sessions.php")
+    assert is_redirect(r) and r.headers["Location"].endswith("#tab-signin")
+    assert "Everywhere else" in unquote(r.headers["Location"])
+
+    # Every other row goes, the ones earlier tests left behind included; this device stays.
+    assert [r["here"] for r in session_rows(signed_in)] == [True]
+    for c in others:
+        assert is_redirect(c.get("/index.php"))
+        assert c.cookies.get_dict() == {}
+    assert signed_in.get("/account/").status_code == 200
+
+
+def test_revoking_this_device_signs_it_out(app, signed_in):
+    """The endpoint allows the current session's own id, and answering it is signing out --
+    the session goes the way /logout.php would take it rather than being left half-alive."""
+    raw = signed_in.cookies.get("slate")
+    mine = hashlib.sha256(raw.encode()).hexdigest()
+    assert app.sql("select user_id from sessions where id=?", mine) == [(1,)], \
+        "the table keys sessions by the hash of the cookie, not the cookie itself"
+
+    r = signed_in.delete("/account/revoke_session.php", data={"id": mine})
+    assert is_redirect(r) and r.headers["Location"] == "/login/"
+    assert signed_in.cookies.get_dict() == {}
+    assert is_redirect(signed_in.get("/account/"))
+    assert app.sql("select id from sessions where id=?", mine) == []
+
+
+def test_revoking_a_session_that_is_not_yours_is_a_404(app, signed_in, member):
+    """Another account's session, and an id naming none: both a 404, because a 403 would
+    confirm the id names a session somewhere. The member is session-scoped, so the attempt
+    has to leave it signed in for the tests after this one."""
+    member_id = app.sql("select id from users where email='member@example.com'")[0][0]
+    their_session = app.sql(
+        "select id from sessions where user_id=? order by last_seen_at desc limit 1",
+        member_id)[0][0]
+
+    for stolen in (their_session, "0" * 64):
+        r = signed_in.delete("/account/revoke_session.php", data={"id": stolen})
+        assert r.status_code == 404
+
+    assert app.sql("select id from sessions where id=?", their_session) == [(their_session,)]
+    assert member.get("/index.php").status_code == 200

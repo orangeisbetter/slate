@@ -16,7 +16,7 @@ Slate uses colocated routing: URLs map directly to files under `public/`. There 
 
 - `/` — index/home
 - `/setup/` — first-run account creation; closes once any account exists (or keyed by `SLATE_SETUP_KEY`)
-- `/signin/`, `/signout/`, `/account/` — auth and profile
+- `/signin/`, `/signout/`, `/account/` — auth and profile; the account page's signed-in devices list is served by `account/revoke_session.php` (DELETE, one session by id) and `account/revoke_other_sessions.php` (DELETE, every session but the caller's)
 - `/project/` — project view and related endpoints (`update.php`, `archive.php`, etc.)
 - `/boards/` — boards views; board drag/move uses `board/move.php` re-rendering the board (reference pattern)
 - `/new/` — create new items (`add.php`)

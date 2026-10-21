@@ -9,25 +9,21 @@ start_session();
 
 /** The signed-in user id, or a redirect to sign in (setup on first run). */
 function require_login(): int {
-    global $db;
-    $uid = (int)($_SESSION['uid'] ?? 0);
-    if ($uid && user_exists($uid) && user_is_active($uid)) {
-        // A password change bumps users.session_version, which invalidates every session that
-        // was stamped with the old value — this one included. One extra indexed read on a table
-        // the checks above have already touched, rather than a session store of its own.
-        $sv = (int)$db->query('SELECT session_version FROM users WHERE id=' . $uid)->fetchColumn();
-        if ((int)($_SESSION['sv'] ?? -1) === $sv) {
-            return $uid;
-        }
+    $s = session_row();
+    if ($s && $s['active']) {
+        // The row is the whole authority on who this session is: one indexed read, joined to
+        // the active check it used to make separately. session_touch() writes nothing until the
+        // value it was handed is a minute old, so reading pages stays reading.
+        session_touch((string)$s['last_seen_at']);
+        return (int)$s['user_id'];
     }
-    // A session whose account has since been deleted, deactivated or had its credential changed
-    // is thrown away rather than just sent back to the sign-in form. Redirecting alone would leave
-    // the cookie in place, and re-activating or re-typing the password would then hand the old
-    // session straight back its access without anyone signing in again -- which is the one thing
-    // deactivating an account or changing a password must not do.
-    if ($uid) {
-        logout_user();
-    }
+    // A session with no live row -- the account was deleted, deactivated or signed out from
+    // elsewhere, or it predates the sessions table -- is thrown away rather than just sent back
+    // to the sign-in form. Redirecting alone would leave the cookie in place, and re-activating
+    // or re-typing the password would then hand the old session straight back its access without
+    // anyone signing in again -- which is the one thing deactivating an account, revoking a
+    // session or changing a password must not do.
+    logout_user();
     if (isset($_SERVER['HTTP_HX_REQUEST'])) {
         http_response_code(401);
         exit;

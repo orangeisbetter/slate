@@ -12,7 +12,7 @@ Slate is a plain PHP 8.1+ web application with colocated routing (no front contr
 ## Request Flow
 
 1. Every page includes `../src/bootstrap.php` near the top. `bootstrap.php`:
-   - Starts the session (`slate_start_session()`).
+   - Starts the session (`start_session()`), and for pages that declared `SLATE_REQUIRE_LOGIN` resolves `$me` by looking the session up in the `sessions` table (`require_login()`).
    - Runs the CSRF/origin header check via `require_same_origin()` (header-based CSRF model).
    - Sets up global state: loads all users into `$USERS`, sets `$me` if logged in.
 2. Pages that require authentication include `../src/app.php` and call `require_login()` or `require_admin()`. `app.php` itself includes `bootstrap.php`.

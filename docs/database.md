@@ -38,6 +38,7 @@ If the app server is running and you can log in, the app endpoints (`/new/add.ph
 ## Key Tables (for reference)
 
 - `users`: accounts; the first created via `/setup/` becomes admin. Admins can manage users/statuses/invites.
+- `sessions`: the index over PHP's session files, keyed by `sha256(session_id())`; a session with no row is refused. Listed and revoked from `/account/`.
 - `projects`: the core entity; has `status_id` (FK to `project_statuses`), `archived`/`archived_at` (archival is one-way), `creator_id`, timestamps, etc.
 - `project_statuses`: source of truth for statuses (slug, label, panel order, `is_done`, `is_cancelled`, etc.). Edited via `/admin/statuses/`.
 - `boards` / `project_boards`: boards and membership; board 2 is the app's own task board.
