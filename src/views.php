@@ -331,7 +331,10 @@ function board_picker_options(?string $q = null): array {
 function user_picker_options(?string $q = null): array {
     global $USERS, $db;
     $out = [];
-    foreach ($db->query('SELECT id, email FROM users')->fetchAll() as $row) {
+    foreach ($db->query('SELECT id, email, active FROM users')->fetchAll() as $row) {
+        if (empty($row['active'])) {
+            continue;
+        }
         $id = (int)$row['id'];
         $name = $USERS[$id] ?? 'Unknown';
         // An invited account has a name but no address yet, so trim rather than leave a gap.
